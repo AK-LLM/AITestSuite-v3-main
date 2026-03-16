@@ -1,0 +1,42 @@
+# ═══════════════════════════════════════════════════════════
+# AITestSuite v3 — Python Dependencies
+# Author: Amarjit Khakh
+# ═══════════════════════════════════════════════════════════
+#
+# INSTALL ALL:
+#     pip install -r requirements.txt
+#
+# MINIMUM (HuggingFace only, no PDF):
+#     pip install streamlit transformers torch pandas
+#
+# FULL (all features):
+#     pip install -r requirements.txt
+
+# ── Core UI ──────────────────────────────────────────────────────────────
+streamlit>=1.32.0       # Web interface
+
+# ── AI Model Support ─────────────────────────────────────────────────────
+transformers>=4.36.0    # HuggingFace models (free, local)
+torch>=2.0.0            # PyTorch — runs underneath transformers
+openai>=1.0.0           # OpenAI API support (optional)
+anthropic>=0.20.0       # Anthropic Claude API support (optional)
+
+# ── PDF Report Generation ─────────────────────────────────────────────────
+reportlab>=4.0.0        # Professional PDF generation
+
+# ── Data Handling ─────────────────────────────────────────────────────────
+pandas>=2.0.0           # DataFrames for results display
+
+# ── Live Threat Intelligence ──────────────────────────────────────────────
+requests>=2.31.0        # HTTP requests to arXiv API
+
+# ── Black Box Browser Automation (optional) ───────────────────────────────
+# Only needed if using the Black Box Automated Testing mode
+# Install with: pip install selenium webdriver-manager
+selenium>=4.15.0           # Browser automation
+webdriver-manager>=4.0.0  # Auto-downloads matching ChromeDriver/GeckoDriver
+
+# ── Garak (optional — adds 100+ probes) ──────────────────────────────────
+# pip install garak
+# garak                 # LLM vulnerability scanner (optional)
+
