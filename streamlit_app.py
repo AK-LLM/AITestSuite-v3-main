@@ -629,35 +629,52 @@ with tab_dashboard:
 
         # ── PDF generation ────────────────────────────────────────────
         st.markdown("---")
-        st.markdown('<p class="section-header">📄 Generate Audit Report</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-header">📄 Audit Report</p>', unsafe_allow_html=True)
 
-        if st.button("📄 GENERATE PDF AUDIT REPORT", use_container_width=True):
-            with st.spinner("Generating professional PDF report..."):
-                try:
-                    from core.reporting import ReportGenerator
-                    generator = ReportGenerator(output_dir="reports")
-                    pdf_path  = generator.generate(
-                        findings     = findings,
-                        verdict      = verdict,
-                        model_info   = {
-                            "model_name": st.session_state.get("model_name", model_name),
-                            "model_type": st.session_state.get("model_type", model_type)
-                        },
-                        domain       = domain if domain != "general" else None,
-                        auditor_name = auditor_name
-                    )
-                    with open(pdf_path, "rb") as fh:
-                        st.download_button(
-                            label       = "⬇ DOWNLOAD PDF REPORT",
-                            data        = fh.read(),
-                            file_name   = os.path.basename(pdf_path),
-                            mime        = "application/pdf",
-                            use_container_width=True
+        # Show last auto-generated PDF if available
+        last_pdf = st.session_state.get("last_pdf_path")
+        if last_pdf and os.path.exists(last_pdf):
+            with open(last_pdf, "rb") as fh:
+                st.download_button(
+                    label       = f"⬇ DOWNLOAD PDF REPORT — {verdict}",
+                    data        = fh.read(),
+                    file_name   = os.path.basename(last_pdf),
+                    mime        = "application/pdf",
+                    use_container_width=True,
+                    key         = "dash_pdf_download"
+                )
+            st.caption(f"Report: {os.path.basename(last_pdf)}")
+        else:
+            # Manual generate button as fallback
+            if st.button("📄 GENERATE PDF AUDIT REPORT", use_container_width=True):
+                with st.spinner("Generating professional PDF report..."):
+                    try:
+                        from core.reporting import ReportGenerator
+                        generator = ReportGenerator(output_dir="reports")
+                        pdf_path  = generator.generate(
+                            findings     = findings,
+                            verdict      = verdict,
+                            model_info   = {
+                                "model_name": st.session_state.get("model_name", model_name),
+                                "model_type": st.session_state.get("model_type", model_type)
+                            },
+                            domain       = st.session_state.get("domain", domain) if st.session_state.get("domain", domain) != "general" else None,
+                            auditor_name = auditor_name
                         )
-                    st.success(f"✅ Report generated: {os.path.basename(pdf_path)}")
-                except Exception as e:
-                    st.error(f"PDF generation error: {e}")
-                    st.info("Run: pip install reportlab")
+                        st.session_state.last_pdf_path = pdf_path
+                        with open(pdf_path, "rb") as fh:
+                            st.download_button(
+                                label       = "⬇ DOWNLOAD PDF REPORT",
+                                data        = fh.read(),
+                                file_name   = os.path.basename(pdf_path),
+                                mime        = "application/pdf",
+                                use_container_width=True,
+                                key         = "manual_pdf_download"
+                            )
+                        st.success(f"✅ Report generated: {os.path.basename(pdf_path)}")
+                    except Exception as e:
+                        st.error(f"PDF generation error: {e}")
+                        st.info("Run: pip install reportlab")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -779,23 +796,65 @@ with tab_results:
 
 with tab_intel:
     st.markdown('<p class="section-header">📡 Live AI Threat Intelligence</p>', unsafe_allow_html=True)
-    st.caption("Pulls latest AI security research from arXiv in real time. Falls back to curated feed when offline.")
+    st.caption("Pulls latest AI security research from arXiv. Refresh generates NEW test cases from each paper automatically.")
 
     # ── Controls ──────────────────────────────────────────────────────
-    col_btn, col_info = st.columns([1, 3])
+    col_btn, col_btn2, col_info = st.columns([1, 1, 2])
     with col_btn:
         refresh = st.button("🔄 Refresh Feed", use_container_width=True)
+    with col_btn2:
+        generate_tests = st.button("⚗️ Generate Tests from Feed", use_container_width=True)
+
+    # ── Generate new test cases from papers ───────────────────────────
+    if generate_tests:
+        with st.spinner("Fetching papers and generating new test cases..."):
+            try:
+                from live_research.threat_updater import ThreatIntelUpdater
+                updater = ThreatIntelUpdater(
+                    output_file="tests/live_generated_tests.py"
+                )
+                results = updater.fetch_and_generate(max_papers=10)
+                if results["tests_generated"] > 0:
+                    st.success(
+                        f"✅ Generated {results['tests_generated']} new test cases "
+                        f"from {results['papers_fetched']} papers. "
+                        f"Written to tests/live_generated_tests.py"
+                    )
+                    # Show what was generated
+                    for t in results["new_tests"]:
+                        st.info(f"**{t['category']}** — {t['name']}")
+                elif results["papers_fetched"] == 0:
+                    st.warning(
+                        "No papers fetched — network may be unavailable in this environment. "
+                        "The static feed is shown below."
+                    )
+                else:
+                    st.info(
+                        f"Fetched {results['papers_fetched']} papers but all were already "
+                        f"converted to tests previously. {results['tests_skipped']} skipped as duplicates."
+                    )
+                if results.get("errors"):
+                    for err in results["errors"]:
+                        st.caption(f"⚠ {err}")
+            except Exception as e:
+                st.error(f"Test generation error: {e}")
 
     # ── Load feed (with caching to avoid hammering arXiv) ─────────────
     if "threat_feed" not in st.session_state or refresh:
         with st.spinner("Fetching latest AI security research..."):
             try:
                 from live_research.threat_feed import get_live_feed, get_feed_stats
-                items = get_live_feed(max_results=5)
+                items = get_live_feed(max_results=8)
                 st.session_state.threat_feed = items
+                if refresh:
+                    st.success(f"✅ Feed refreshed — {len(items)} items loaded")
             except Exception as e:
-                from live_research.threat_feed import STATIC_FEED
-                st.session_state.threat_feed = STATIC_FEED
+                try:
+                    from live_research.threat_feed import STATIC_FEED
+                    st.session_state.threat_feed = STATIC_FEED
+                    st.info("Network unavailable — showing curated static feed")
+                except Exception:
+                    st.session_state.threat_feed = []
 
     items = st.session_state.get("threat_feed", [])
 
@@ -1647,16 +1706,28 @@ if run_button:
             from tests.advanced_tests import ADVANCED_TESTS
             test_suite += ADVANCED_TESTS
 
-            # Include shadow prod tests if available
-            if "shadow_tests" in st.session_state and st.session_state.shadow_tests:
-                test_suite += st.session_state.shadow_tests
-                status_text.text(f"Loaded {len(st.session_state.shadow_tests)} shadow prod prompts")
+            # ── Domain-specific test modules (ALWAYS load, additive) ─────
+            if domain == "healthcare":
+                from domains.healthcare import HEALTHCARE_TESTS
+                test_suite += HEALTHCARE_TESTS
+                status_text.text(f"Healthcare domain: {len(HEALTHCARE_TESTS)} clinical tests added")
+                try:
+                    from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
+                    test_suite += HEALTHCARE_GOVERNANCE_TESTS
+                    status_text.text(f"Healthcare governance: {len(HEALTHCARE_GOVERNANCE_TESTS)} additional tests added")
+                except Exception:
+                    pass
             elif domain == "finance":
                 from domains.finance import FINANCE_TESTS
                 test_suite += FINANCE_TESTS
             elif domain in ["legal", "government"]:
                 from domains.government_legal import LEGAL_TESTS, GOVERNMENT_TESTS
                 test_suite += LEGAL_TESTS + GOVERNMENT_TESTS
+
+            # Include shadow prod tests if available (additive on top of domain tests)
+            if "shadow_tests" in st.session_state and st.session_state.shadow_tests:
+                test_suite += st.session_state.shadow_tests
+                status_text.text(f"Shadow prod: {len(st.session_state.shadow_tests)} additional prompts added")
 
             def update_progress(pct, msg):
                 progress_bar.progress(min(float(pct), 1.0))
@@ -1852,18 +1923,49 @@ if run_button:
             except Exception:
                 pass
 
-            # ── Step 4: Store in session state ────────────────────────────
+            # ── Step 4: Auto-generate PDF ─────────────────────────────────
+            auto_pdf_path = None
+            try:
+                from core.reporting import ReportGenerator
+                generator    = ReportGenerator(output_dir="reports")
+                auto_pdf_path = generator.generate(
+                    findings     = all_findings,
+                    verdict      = verdict,
+                    model_info   = {"model_name": model_name, "model_type": model_type},
+                    domain       = domain if domain != "general" else None,
+                    auditor_name = auditor_name
+                )
+                st.session_state.last_pdf_path = auto_pdf_path
+            except Exception as pdf_err:
+                st.session_state.last_pdf_path = None
+
+            # ── Step 5: Store in session state ────────────────────────────
             st.session_state.findings   = all_findings
             st.session_state.verdict    = verdict
             st.session_state.model_name = model_name
             st.session_state.model_type = model_type
             st.session_state.audit_mode = audit_mode
+            st.session_state.domain     = domain
 
             progress_bar.progress(1.0)
             status_text.text(
                 f"✅ Audit complete — {len(all_findings)} findings | "
                 f"Verdict: {verdict} | Mode: {audit_mode.upper()}"
             )
+
+            # Show immediate PDF download if auto-generation succeeded
+            if auto_pdf_path and os.path.exists(auto_pdf_path):
+                with open(auto_pdf_path, "rb") as fh:
+                    st.download_button(
+                        label       = f"⬇ DOWNLOAD PDF REPORT — {verdict}",
+                        data        = fh.read(),
+                        file_name   = os.path.basename(auto_pdf_path),
+                        mime        = "application/pdf",
+                        use_container_width=True,
+                        key         = "auto_pdf_download"
+                    )
+                st.success(f"📄 Report ready: {os.path.basename(auto_pdf_path)}")
+
             time.sleep(0.8)
             st.rerun()
 
