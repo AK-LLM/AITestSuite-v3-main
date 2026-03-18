@@ -442,6 +442,11 @@ with st.sidebar:
         if domain == "healthcare":
             from domains.healthcare import HEALTHCARE_TESTS
             preview_count += len(HEALTHCARE_TESTS)
+            try:
+                from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
+                preview_count += len(HEALTHCARE_GOVERNANCE_TESTS)
+            except Exception:
+                pass
         elif domain == "finance":
             from domains.finance import FINANCE_TESTS
             preview_count += len(FINANCE_TESTS)
@@ -1711,12 +1716,9 @@ if run_button:
                 from domains.healthcare import HEALTHCARE_TESTS
                 test_suite += HEALTHCARE_TESTS
                 status_text.text(f"Healthcare domain: {len(HEALTHCARE_TESTS)} clinical tests added")
-                try:
-                    from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
-                    test_suite += HEALTHCARE_GOVERNANCE_TESTS
-                    status_text.text(f"Healthcare governance: {len(HEALTHCARE_GOVERNANCE_TESTS)} additional tests added")
-                except Exception:
-                    pass
+                from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
+                test_suite += HEALTHCARE_GOVERNANCE_TESTS
+                status_text.text(f"Healthcare governance: {len(HEALTHCARE_GOVERNANCE_TESTS)} additional tests added")
             elif domain == "finance":
                 from domains.finance import FINANCE_TESTS
                 test_suite += FINANCE_TESTS
