@@ -1345,7 +1345,7 @@ with tab_multimodel:
         mm_configs.append({"type": mm_type, "name": mm_name, "label": mm_label, "api_key": mm_key})
         st.markdown("---")
 
-    mm_domain = st.radio("Domain", ["general","healthcare","finance"], horizontal=True, key="mm_domain")
+    mm_domain = st.radio("Domain", ["general","healthcare","finance","legal","government"], horizontal=True, key="mm_domain")
 
     if st.button("🔀 RUN MULTI-MODEL COMPARISON", use_container_width=True):
         mm_progress = st.progress(0)
@@ -1370,8 +1370,71 @@ with tab_multimodel:
                     </div>""", unsafe_allow_html=True)
             if report.get("recommendation"):
                 st.success(f"**Recommended:** {report['recommendation']['recommended_model']} — {report['recommendation']['reason']}")
+
             with st.expander("📊 Full Comparison Data"):
                 st.json(report.get("comparison", {}))
+
+            # ── PDF Generation ────────────────────────────────────────
+            st.markdown("---")
+            st.markdown("### 📄 Audit Reports")
+
+            auditor_nm = st.session_state.get("auditor_name", "Amarjit Khakh")
+
+            pdf_col1, pdf_col2 = st.columns(2)
+
+            # Individual PDFs per model
+            with pdf_col1:
+                with st.spinner("Generating individual PDF reports…"):
+                    try:
+                        individual_pdfs = orch.generate_individual_pdfs(
+                            results,
+                            domain      = mm_domain,
+                            auditor_name= auditor_nm
+                        )
+                        if individual_pdfs:
+                            st.markdown("**Individual Model Reports**")
+                            for label, pdf_path in individual_pdfs:
+                                try:
+                                    with open(pdf_path, "rb") as f:
+                                        pdf_bytes = f.read()
+                                    safe_label = label.replace("/", "_").replace(" ", "_")
+                                    st.download_button(
+                                        label    = f"⬇️ {label} — Audit PDF",
+                                        data     = pdf_bytes,
+                                        file_name= f"AIAudit_{safe_label}.pdf",
+                                        mime     = "application/pdf",
+                                        key      = f"dl_individual_{safe_label}"
+                                    )
+                                except Exception:
+                                    st.warning(f"Could not read PDF for {label}")
+                        else:
+                            st.info("No individual PDFs generated.")
+                    except Exception as e:
+                        st.error(f"Individual PDF error: {str(e)}")
+
+            # Combined comparison PDF
+            with pdf_col2:
+                with st.spinner("Generating comparison PDF…"):
+                    try:
+                        comparison_pdf = orch.generate_comparison_pdf(
+                            results,
+                            domain      = mm_domain,
+                            auditor_name= auditor_nm
+                        )
+                        with open(comparison_pdf, "rb") as f:
+                            cmp_bytes = f.read()
+                        st.markdown("**Combined Comparison Report**")
+                        st.download_button(
+                            label    = "⬇️ Multi-Model Comparison PDF",
+                            data     = cmp_bytes,
+                            file_name= f"AIAudit_MultiModel_Comparison_{mm_domain}.pdf",
+                            mime     = "application/pdf",
+                            key      = "dl_comparison_pdf"
+                        )
+                        st.caption("Landscape format · All models side by side · Category breakdown · Detailed findings")
+                    except Exception as e:
+                        st.error(f"Comparison PDF error: {str(e)}")
+
         except Exception as e:
             st.error(f"Comparison failed: {str(e)}")
 

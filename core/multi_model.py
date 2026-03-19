@@ -140,6 +140,8 @@ class MultiModelOrchestrator:
             if domain == "healthcare":
                 from domains.healthcare import HEALTHCARE_TESTS
                 test_suite += HEALTHCARE_TESTS
+                from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
+                test_suite += HEALTHCARE_GOVERNANCE_TESTS
             elif domain == "finance":
                 from domains.finance import FINANCE_TESTS
                 test_suite += FINANCE_TESTS
@@ -303,3 +305,289 @@ class MultiModelOrchestrator:
                 }
 
         return matrix
+
+    def generate_individual_pdfs(self, results, domain=None, auditor_name="Amarjit Khakh"):
+        """
+        Generate one PDF audit report per model.
+
+        Returns:
+            List of (label, pdf_path) tuples
+        """
+        from core.reporting import ReportGenerator
+        import os
+
+        os.makedirs("reports", exist_ok=True)
+        pdf_paths = []
+
+        for config, findings, verdict, error in results:
+            label = config.get("label") or config.get("name", "unknown")
+            if error or not findings:
+                continue
+            try:
+                generator = ReportGenerator(output_dir="reports")
+                pdf_path  = generator.generate(
+                    findings     = findings,
+                    verdict      = verdict,
+                    model_info   = {
+                        "model_name": config.get("name", label),
+                        "model_type": config.get("type", "unknown").upper()
+                    },
+                    domain       = domain if domain and domain != "general" else None,
+                    auditor_name = auditor_name
+                )
+                pdf_paths.append((label, pdf_path))
+                logger.info(f"Individual PDF generated for {label}: {pdf_path}")
+            except Exception as e:
+                logger.error(f"PDF generation failed for {label}: {e}")
+
+        return pdf_paths
+
+    def generate_comparison_pdf(self, results, domain=None, auditor_name="Amarjit Khakh"):
+        """
+        Generate a single combined comparison PDF report
+        showing all models side by side with full findings.
+
+        Returns:
+            Path to the generated comparison PDF
+        """
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.lib import colors
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                         Table, TableStyle, HRFlowable, PageBreak)
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        import os
+
+        os.makedirs("reports", exist_ok=True)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        output    = f"reports/MultiModel_Comparison_{timestamp}.pdf"
+
+        doc    = SimpleDocTemplate(output, pagesize=landscape(A4),
+                                   rightMargin=1.5*cm, leftMargin=1.5*cm,
+                                   topMargin=1.5*cm, bottomMargin=1.5*cm)
+        styles = getSampleStyleSheet()
+        story  = []
+
+        # ── Colour scheme ─────────────────────────────────────────────
+        NAVY   = colors.HexColor("#1F3864")
+        BLUE   = colors.HexColor("#2E75B6")
+        WHITE  = colors.white
+        LGRAY  = colors.HexColor("#F2F2F2")
+        RED    = colors.HexColor("#C0392B")
+        GREEN  = colors.HexColor("#27AE60")
+        GOLD   = colors.HexColor("#C9A84C")
+        ORANGE = colors.HexColor("#E67E22")
+
+        VERDICT_COLORS = {
+            "PASS":             GREEN,
+            "CONDITIONAL PASS": ORANGE,
+            "FAIL":             RED,
+            "ERROR":            colors.grey
+        }
+
+        title_style = ParagraphStyle("T", parent=styles["Title"],
+                                     fontSize=22, textColor=NAVY, spaceAfter=4)
+        sub_style   = ParagraphStyle("S", parent=styles["Normal"],
+                                     fontSize=11, textColor=BLUE, spaceAfter=8)
+        head_style  = ParagraphStyle("H", parent=styles["Heading2"],
+                                     fontSize=13, textColor=NAVY, spaceBefore=12, spaceAfter=6)
+        body_style  = ParagraphStyle("B", parent=styles["Normal"],
+                                     fontSize=9,  textColor=colors.HexColor("#333333"), spaceAfter=4)
+
+        # ── Cover ─────────────────────────────────────────────────────
+        story.append(Paragraph("AITestSuite v3", title_style))
+        story.append(Paragraph("Multi-Model Comparative Audit Report", sub_style))
+        story.append(HRFlowable(width="100%", thickness=2, color=NAVY))
+        story.append(Spacer(1, 0.3*cm))
+
+        meta = [
+            ["Report Type",   "Multi-Model Comparison Audit"],
+            ["Audit Date",    time.strftime("%B %d, %Y at %H:%M")],
+            ["Domain",        (domain or "general").upper()],
+            ["Models Tested", str(sum(1 for _,f,_,e in results if not e))],
+            ["Auditor",       auditor_name],
+            ["Toolkit",       "AITestSuite v3"],
+        ]
+        meta_tbl = Table(meta, colWidths=[4*cm, 10*cm])
+        meta_tbl.setStyle(TableStyle([
+            ("FONTNAME",    (0,0),(0,-1), "Helvetica-Bold"),
+            ("FONTSIZE",    (0,0),(-1,-1), 9),
+            ("BACKGROUND",  (0,0),(0,-1), colors.HexColor("#F0F0F8")),
+            ("TEXTCOLOR",   (0,0),(0,-1), NAVY),
+            ("ROWBACKGROUNDS",(0,0),(-1,-1),[WHITE, colors.HexColor("#FAFAFA")]),
+            ("GRID",        (0,0),(-1,-1), 0.5, colors.HexColor("#CCCCCC")),
+            ("PADDING",     (0,0),(-1,-1), 6),
+        ]))
+        story.append(meta_tbl)
+        story.append(Spacer(1, 0.6*cm))
+
+        # ── Verdict summary banner ─────────────────────────────────────
+        story.append(Paragraph("Verdict Summary", head_style))
+
+        valid = [(c,f,v,e) for c,f,v,e in results if not e and f]
+        if not valid:
+            story.append(Paragraph("No valid results to display.", body_style))
+        else:
+            summary_data = [["Model", "Verdict", "Tests", "Passed", "Failed", "Pass Rate", "Avg Risk", "Critical"]]
+            for config, findings, verdict, error in valid:
+                label    = config.get("label") or config.get("name","?")
+                total    = len(findings)
+                passed   = sum(1 for f in findings if f.get("passed"))
+                failed   = total - passed
+                avg_risk = round(sum(f.get("risk_matrix",{}).get("overall",0) for f in findings)/max(total,1), 2)
+                critical = sum(1 for f in findings if f.get("risk_matrix",{}).get("overall",0) >= 4.5)
+                summary_data.append([
+                    label, verdict, str(total), str(passed), str(failed),
+                    f"{round(passed/max(total,1)*100,1)}%", str(avg_risk), str(critical)
+                ])
+
+            col_w = [4*cm, 3.5*cm, 2*cm, 2*cm, 2*cm, 2.5*cm, 2.5*cm, 2.5*cm]
+            s_tbl = Table(summary_data, colWidths=col_w)
+            s_style = [
+                ("FONTNAME",   (0,0),(-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",   (0,0),(-1,-1), 8.5),
+                ("BACKGROUND", (0,0),(-1,0), NAVY),
+                ("TEXTCOLOR",  (0,0),(-1,0), WHITE),
+                ("GRID",       (0,0),(-1,-1), 0.5, colors.HexColor("#CCCCCC")),
+                ("PADDING",    (0,0),(-1,-1), 6),
+                ("ROWBACKGROUNDS",(0,1),(-1,-1),[WHITE, colors.HexColor("#F4F7FB")]),
+            ]
+            # Colour verdict cells
+            for i, (config, findings, verdict, error) in enumerate(valid):
+                vc = VERDICT_COLORS.get(verdict, colors.grey)
+                s_style.append(("BACKGROUND", (1, i+1), (1, i+1), vc))
+                s_style.append(("TEXTCOLOR",  (1, i+1), (1, i+1), WHITE))
+                s_style.append(("FONTNAME",   (1, i+1), (1, i+1), "Helvetica-Bold"))
+            s_tbl.setStyle(TableStyle(s_style))
+            story.append(s_tbl)
+            story.append(Spacer(1, 0.4*cm))
+
+            # ── Recommendation ─────────────────────────────────────────
+            best = min(valid, key=lambda x: sum(f.get("risk_matrix",{}).get("overall",0)
+                                                 for f in x[1]) / max(len(x[1]),1))
+            best_label = best[0].get("label") or best[0].get("name","?")
+            story.append(Paragraph(
+                f"<b>Recommendation:</b> {best_label} achieved the lowest average risk score "
+                f"and is the safest option among the models tested.",
+                body_style
+            ))
+            story.append(Spacer(1, 0.4*cm))
+
+            # ── Category comparison ────────────────────────────────────
+            story.append(Paragraph("Category-Level Comparison", head_style))
+
+            all_cats = set()
+            model_cats = {}
+            for config, findings, verdict, error in valid:
+                label = config.get("label") or config.get("name","?")
+                model_cats[label] = {}
+                for f in findings:
+                    cat = f.get("category","Unknown")
+                    all_cats.add(cat)
+                    if cat not in model_cats[label]:
+                        model_cats[label][cat] = {"pass":0,"fail":0,"risks":[]}
+                    model_cats[label][cat]["pass" if f.get("passed") else "fail"] += 1
+                    model_cats[label][cat]["risks"].append(
+                        f.get("risk_matrix",{}).get("overall",0))
+
+            labels   = [c.get("label") or c.get("name","?") for c,f,v,e in valid]
+            cat_hdr  = ["Category"] + labels
+            cat_data = [cat_hdr]
+            for cat in sorted(all_cats):
+                row = [cat[:35]]
+                for lbl in labels:
+                    cd     = model_cats.get(lbl,{}).get(cat,{})
+                    p      = cd.get("pass",0)
+                    total_c = p + cd.get("fail",0)
+                    risks  = cd.get("risks",[0])
+                    avg_r  = round(sum(risks)/max(len(risks),1),1)
+                    row.append(f"{p}/{total_c} ({avg_r})")
+                cat_data.append(row)
+
+            cw = [5*cm] + [max(3*cm, 21*cm/max(len(labels),1)) for _ in labels]
+            c_tbl = Table(cat_data, colWidths=cw[:len(cat_hdr)])
+            c_tbl.setStyle(TableStyle([
+                ("FONTNAME",        (0,0),(-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",        (0,0),(-1,-1), 8),
+                ("BACKGROUND",      (0,0),(-1,0), BLUE),
+                ("TEXTCOLOR",       (0,0),(-1,0), WHITE),
+                ("GRID",            (0,0),(-1,-1), 0.3, colors.HexColor("#CCCCCC")),
+                ("PADDING",         (0,0),(-1,-1), 5),
+                ("ROWBACKGROUNDS",  (0,1),(-1,-1),[WHITE, LGRAY]),
+                ("FONTNAME",        (0,1),(0,-1), "Helvetica-Bold"),
+                ("TEXTCOLOR",       (0,1),(0,-1), NAVY),
+            ]))
+            story.append(c_tbl)
+            story.append(Spacer(1, 0.4*cm))
+
+            # ── Per-model detailed findings ────────────────────────────
+            for config, findings, verdict, error in valid:
+                label = config.get("label") or config.get("name","?")
+                story.append(PageBreak())
+                story.append(Paragraph(f"Detailed Findings — {label}", head_style))
+                story.append(Paragraph(
+                    f"Model: {config.get('name',label)} | "
+                    f"Verdict: {verdict} | "
+                    f"Passed: {sum(1 for f in findings if f.get('passed'))}/{len(findings)}",
+                    body_style
+                ))
+                story.append(Spacer(1, 0.2*cm))
+
+                # Findings table — critical and high only for brevity
+                important = [f for f in findings
+                             if f.get("risk_matrix",{}).get("overall",0) >= 3.5][:30]
+                if important:
+                    fhdr = [["#","Test Name","Category","Risk","Result"]]
+                    frows = []
+                    for i, f in enumerate(important):
+                        rm = f.get("risk_matrix",{})
+                        frows.append([
+                            str(i+1),
+                            f.get("name","")[:40],
+                            f.get("category","")[:25],
+                            str(rm.get("overall","-")),
+                            "PASS" if f.get("passed") else "FAIL"
+                        ])
+                    ftbl = Table(fhdr + frows,
+                                 colWidths=[1*cm, 8*cm, 5.5*cm, 2*cm, 2*cm])
+                    ft_style = [
+                        ("FONTNAME",   (0,0),(-1,0), "Helvetica-Bold"),
+                        ("FONTSIZE",   (0,0),(-1,-1), 8),
+                        ("BACKGROUND", (0,0),(-1,0), NAVY),
+                        ("TEXTCOLOR",  (0,0),(-1,0), WHITE),
+                        ("GRID",       (0,0),(-1,-1), 0.3, colors.HexColor("#CCCCCC")),
+                        ("PADDING",    (0,0),(-1,-1), 5),
+                        ("ROWBACKGROUNDS",(0,1),(-1,-1),[WHITE, LGRAY]),
+                    ]
+                    for i, f in enumerate(important):
+                        ov = f.get("risk_matrix",{}).get("overall",0)
+                        rc = RED if ov >= 4.5 else ORANGE if ov >= 3.5 else colors.grey
+                        ft_style.append(("BACKGROUND",(3,i+1),(3,i+1), rc))
+                        ft_style.append(("TEXTCOLOR", (3,i+1),(3,i+1), WHITE))
+                        rc2 = RED if not f.get("passed") else GREEN
+                        ft_style.append(("TEXTCOLOR", (4,i+1),(4,i+1), rc2))
+                        ft_style.append(("FONTNAME",  (4,i+1),(4,i+1), "Helvetica-Bold"))
+                    ftbl.setStyle(TableStyle(ft_style))
+                    story.append(ftbl)
+                    if len(findings) > 30:
+                        story.append(Paragraph(
+                            f"Showing top {len(important)} findings by risk score. "
+                            f"See individual model PDF reports for complete findings.",
+                            body_style
+                        ))
+
+        # ── Footer ────────────────────────────────────────────────────
+        story.append(Spacer(1, 0.5*cm))
+        story.append(HRFlowable(width="100%", thickness=1,
+                                color=colors.HexColor("#DDDDDD")))
+        story.append(Paragraph(
+            f"Generated by AITestSuite v3 | {time.strftime('%Y-%m-%d %H:%M:%S')} "
+            f"| Auditor: {auditor_name} | For authorised security testing only",
+            ParagraphStyle("F", parent=styles["Normal"],
+                           fontSize=7, textColor=colors.grey, alignment=TA_CENTER)
+        ))
+
+        doc.build(story)
+        logger.info(f"Comparison PDF generated: {output}")
+        return output
