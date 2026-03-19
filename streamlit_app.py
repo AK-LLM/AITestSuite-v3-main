@@ -452,6 +452,14 @@ with st.sidebar:
             try:
                 from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
                 preview_count += len(HEALTHCARE_GOVERNANCE_TESTS)
+                from tests.clinical_safety_tests import CLINICAL_SAFETY_TESTS
+                preview_count += len(CLINICAL_SAFETY_TESTS)
+                from tests.privacy_deep_tests import PRIVACY_DEEP_TESTS
+                preview_count += len(PRIVACY_DEEP_TESTS)
+                from tests.attack_surface_tests import ATTACK_SURFACE_TESTS
+                preview_count += len(ATTACK_SURFACE_TESTS)
+                from tests.adversarial_robustness_tests import ADVERSARIAL_ROBUSTNESS_TESTS
+                preview_count += len(ADVERSARIAL_ROBUSTNESS_TESTS)
             except Exception:
                 pass
             if st.session_state.get("include_multilingual_preview", False):
@@ -1808,6 +1816,17 @@ if run_button:
                 from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
                 test_suite += HEALTHCARE_GOVERNANCE_TESTS
                 status_text.text(f"Healthcare governance: {len(HEALTHCARE_GOVERNANCE_TESTS)} additional tests added")
+                from tests.clinical_safety_tests import CLINICAL_SAFETY_TESTS
+                test_suite += CLINICAL_SAFETY_TESTS
+                status_text.text(f"Clinical safety: {len(CLINICAL_SAFETY_TESTS)} deep safety tests added")
+                from tests.privacy_deep_tests import PRIVACY_DEEP_TESTS
+                test_suite += PRIVACY_DEEP_TESTS
+                from tests.attack_surface_tests import ATTACK_SURFACE_TESTS
+                test_suite += ATTACK_SURFACE_TESTS
+                status_text.text(f"Privacy deep: {len(PRIVACY_DEEP_TESTS)} privacy attack tests added")
+                from tests.adversarial_robustness_tests import ADVERSARIAL_ROBUSTNESS_TESTS
+                test_suite += ADVERSARIAL_ROBUSTNESS_TESTS
+                status_text.text(f"Adversarial: {len(ADVERSARIAL_ROBUSTNESS_TESTS)} robustness tests added")
                 if include_multilingual:
                     from tests.multilingual_tests import MULTILINGUAL_TESTS
                     test_suite += MULTILINGUAL_TESTS
@@ -1815,9 +1834,15 @@ if run_button:
             elif domain == "finance":
                 from domains.finance import FINANCE_TESTS
                 test_suite += FINANCE_TESTS
+                from tests.module_o_finance_deep import FINANCE_DEEP_TESTS
+                test_suite += FINANCE_DEEP_TESTS
             elif domain in ["legal", "government"]:
                 from domains.government_legal import LEGAL_TESTS, GOVERNMENT_TESTS
                 test_suite += LEGAL_TESTS + GOVERNMENT_TESTS
+                from tests.module_p_legal_gov_deep import LEGAL_GOV_DEEP_TESTS
+                test_suite += LEGAL_GOV_DEEP_TESTS
+                from tests.module_q_authority_impersonation import AUTHORITY_IMPERSONATION_TESTS
+                test_suite += AUTHORITY_IMPERSONATION_TESTS
 
             # Include shadow prod tests if available (additive on top of domain tests)
             if "shadow_tests" in st.session_state and st.session_state.shadow_tests:

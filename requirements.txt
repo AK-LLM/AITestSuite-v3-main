@@ -1,48 +1,83 @@
 # ═══════════════════════════════════════════════════════════
-# AITestSuite v3 — Python Dependencies
+# AITestSuite v3 — Complete Dependencies
 # Author: Amarjit Khakh
 #
-# STREAMLIT CLOUD:
-#   pip install -r requirements.txt
-#   Supports: flan-t5-small (small HuggingFace models)
-#             OpenAI, Anthropic, and other API providers
+# THREE ENVIRONMENTS SUPPORTED:
 #
-# GOOGLE COLAB (full capability):
-#   pip install -r requirements.txt
-#   pip install bitsandbytes accelerate   # for Mistral-7B, Llama-2 etc
+# 1. STREAMLIT CLOUD (UI demo only)
+#    pip install -r requirements.txt
+#    Supports: flan-t5-small, API providers
+#    Does NOT support: flan-t5-xl, Mistral-7B (no GPU)
+#
+# 2. GOOGLE COLAB FREE T4 (recommended for audits)
+#    pip install -r requirements.txt
+#    pip install bitsandbytes accelerate  # for 7B+ models
+#    Supports: all models up to Mistral-7B
+#
+# 3. LOCAL MACHINE (full capability)
+#    pip install -r requirements.txt
+#    pip install -r requirements-local.txt
+#    See MIGRATION_GUIDE.md for full setup
 # ═══════════════════════════════════════════════════════════
 
 # ── Core UI ──────────────────────────────────────────────────────────────
 streamlit>=1.32.0
 
-# ── HuggingFace model support ─────────────────────────────────────────────
-# Required for flan-t5-small, flan-t5-xl, Mistral-7B etc
+# ── HuggingFace Model Support ─────────────────────────────────────────────
 torch>=2.0.0
 transformers>=4.36.0
+datasets>=2.14.0
 
 # ── PDF Report Generation ─────────────────────────────────────────────────
 reportlab>=4.0.0
 
 # ── Data and Utilities ────────────────────────────────────────────────────
 pandas>=2.0.0
+numpy>=1.24.0
 requests>=2.31.0
+scipy>=1.11.0
 
-# ── Semantic Evaluation (improves scoring accuracy) ───────────────────────
+# ── Semantic Evaluation ───────────────────────────────────────────────────
 sentence-transformers>=2.2.0
 
-# ── API Model Providers (optional — only needed for cloud models) ─────────
+# ── API Model Providers ───────────────────────────────────────────────────
 openai>=1.0.0
 anthropic>=0.20.0
 boto3>=1.26.0
 
-# ── Black Box Browser Testing (optional — local/Colab only) ──────────────
-# Selenium requires Chrome which is NOT available on Streamlit Cloud.
-# For local or Colab black-box testing only:
-# pip install selenium webdriver-manager
-#
-# DO NOT uncomment these for Streamlit Cloud deployment:
-# selenium>=4.15.0
-# webdriver-manager>=4.0.0
+# ── REST API ──────────────────────────────────────────────────────────────
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
 
-# ── Large Model Quantization (optional — Colab only, for 7B+ models) ─────
+# ── ML Metrics (bias testing, drift detection) ────────────────────────────
+scikit-learn>=1.3.0
+
+# ── Security Testing ──────────────────────────────────────────────────────
+cryptography>=41.0.0
+
+# ── Testing Framework ─────────────────────────────────────────────────────
+pytest>=7.4.0
+
+# ── OPTIONAL: Large Model Quantization (Colab/Local GPU only) ─────────────
+# Install separately for Mistral-7B, Llama-2, Gemma-7B etc:
 # pip install bitsandbytes accelerate
+
+# ── OPTIONAL: Multimodal Testing (Local only) ─────────────────────────────
+# Install separately for PDF/image/audio attack tests:
+# pip install Pillow pymupdf
+
+# ── OPTIONAL: Advanced NLP (Local only) ───────────────────────────────────
+# Install separately for clinical NLP tests:
+# pip install nltk spacy
+
+# ── OPTIONAL: GCP Vertex AI ───────────────────────────────────────────────
+# pip install google-cloud-aiplatform
+
+# ── OPTIONAL: Ollama Local ────────────────────────────────────────────────
+# No pip install needed — install Ollama from ollama.ai
+
+# ── NOT INCLUDED (causes Streamlit Cloud crashes) ─────────────────────────
+# selenium>=4.15.0        — requires Chrome, not on Streamlit Cloud
+# webdriver-manager       — same issue
+# Install locally only: pip install selenium webdriver-manager

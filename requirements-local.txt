@@ -1,0 +1,35 @@
+# ═══════════════════════════════════════════════════════════
+# AITestSuite v3 — Local Machine Full Install
+# Author: Amarjit Khakh
+#
+# For full local deployment with all features.
+# Run AFTER requirements.txt:
+#   pip install -r requirements.txt
+#   pip install -r requirements-local.txt
+# ═══════════════════════════════════════════════════════════
+
+# ── Large Model Quantization ──────────────────────────────────────────────
+bitsandbytes>=0.41.0
+accelerate>=0.24.0
+
+# ── Multimodal Attack Testing ─────────────────────────────────────────────
+Pillow>=10.0.0
+pymupdf>=1.23.0
+
+# ── Advanced Clinical NLP ─────────────────────────────────────────────────
+nltk>=3.8.0
+spacy>=3.6.0
+
+# ── Browser Automation (Black Box Testing) ────────────────────────────────
+selenium>=4.15.0
+webdriver-manager>=4.0.0
+
+# ── GCP Vertex AI ─────────────────────────────────────────────────────────
+google-cloud-aiplatform>=1.36.0
+
+# ── Advanced Security Testing ─────────────────────────────────────────────
+paramiko>=3.3.0
+
+# ── Audio Processing (Voice/Deepfake Tests) ───────────────────────────────
+librosa>=0.10.0
+soundfile>=0.12.0

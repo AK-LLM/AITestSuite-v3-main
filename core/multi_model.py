@@ -142,12 +142,62 @@ class MultiModelOrchestrator:
                 test_suite += HEALTHCARE_TESTS
                 from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
                 test_suite += HEALTHCARE_GOVERNANCE_TESTS
+                from tests.clinical_safety_tests import CLINICAL_SAFETY_TESTS
+                test_suite += CLINICAL_SAFETY_TESTS
+                from tests.privacy_deep_tests import PRIVACY_DEEP_TESTS
+                test_suite += PRIVACY_DEEP_TESTS
+                from tests.module_a_indigenous_health import INDIGENOUS_HEALTH_TESTS
+                test_suite += INDIGENOUS_HEALTH_TESTS
+                from tests.module_b_maid import MAID_TESTS
+                test_suite += MAID_TESTS
+                from tests.module_c_supply_chain import SUPPLY_CHAIN_TESTS
+                test_suite += SUPPLY_CHAIN_TESTS
+                from tests.module_d_vector_embedding import VECTOR_EMBEDDING_TESTS
+                test_suite += VECTOR_EMBEDDING_TESTS
+                from tests.module_e_output_handling import OUTPUT_HANDLING_TESTS
+                test_suite += OUTPUT_HANDLING_TESTS
+                from tests.module_f_sycophancy import SYCOPHANCY_TESTS
+                test_suite += SYCOPHANCY_TESTS
+                from tests.module_g_multispecialty import MULTISPECIALTY_TESTS
+                test_suite += MULTISPECIALTY_TESTS
+                from tests.module_h_governance_deep import GOVERNANCE_DEEP_TESTS
+                test_suite += GOVERNANCE_DEEP_TESTS
+                from tests.module_i_canadian_specific import CANADIAN_SPECIFIC_TESTS
+                test_suite += CANADIAN_SPECIFIC_TESTS
+                from tests.module_j_intersectional_bias import INTERSECTIONAL_BIAS_TESTS
+                test_suite += INTERSECTIONAL_BIAS_TESTS
+                from tests.module_k_agentic_deep import AGENTIC_DEEP_TESTS
+                test_suite += AGENTIC_DEEP_TESTS
+                from tests.module_l_multimodal import MULTIMODAL_TESTS
+                test_suite += MULTIMODAL_TESTS
+                from tests.module_m_drift_temporal import DRIFT_TEMPORAL_TESTS
+                test_suite += DRIFT_TEMPORAL_TESTS
+                from tests.module_n_llmjacking import LLMJACKING_TESTS
+                test_suite += LLMJACKING_TESTS
+                from tests.module_r_owasp_agentic import OWASP_AGENTIC_TESTS
+                test_suite += OWASP_AGENTIC_TESTS
+                from tests.module_s_emergent_behavior import EMERGENT_BEHAVIOR_TESTS
+                test_suite += EMERGENT_BEHAVIOR_TESTS
+                from tests.module_t_deepfake_voice import DEEPFAKE_VOICE_TESTS
+                test_suite += DEEPFAKE_VOICE_TESTS
+                from tests.module_u_social_engineering import SOCIAL_ENGINEERING_TESTS
+                test_suite += SOCIAL_ENGINEERING_TESTS
+                from tests.attack_surface_tests import ATTACK_SURFACE_TESTS
+                test_suite += ATTACK_SURFACE_TESTS
+                from tests.adversarial_robustness_tests import ADVERSARIAL_ROBUSTNESS_TESTS
+                test_suite += ADVERSARIAL_ROBUSTNESS_TESTS
             elif domain == "finance":
                 from domains.finance import FINANCE_TESTS
                 test_suite += FINANCE_TESTS
+                from tests.module_o_finance_deep import FINANCE_DEEP_TESTS
+                test_suite += FINANCE_DEEP_TESTS
             elif domain in ["legal", "government"]:
                 from domains.government_legal import LEGAL_TESTS, GOVERNMENT_TESTS
                 test_suite += LEGAL_TESTS + GOVERNMENT_TESTS
+                from tests.module_p_legal_gov_deep import LEGAL_GOV_DEEP_TESTS
+                test_suite += LEGAL_GOV_DEEP_TESTS
+                from tests.module_q_authority_impersonation import AUTHORITY_IMPERSONATION_TESTS
+                test_suite += AUTHORITY_IMPERSONATION_TESTS
 
         total   = len(self.model_configs)
         results = []
