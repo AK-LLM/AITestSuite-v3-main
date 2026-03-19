@@ -1,31 +1,48 @@
 # ═══════════════════════════════════════════════════════════
 # AITestSuite v3 — Python Dependencies
 # Author: Amarjit Khakh
-# ═══════════════════════════════════════════════════════════
 #
-# Streamlit Cloud safe — all heavy/optional packages removed
-# For local full install see README.md
+# STREAMLIT CLOUD:
+#   pip install -r requirements.txt
+#   Supports: flan-t5-small (small HuggingFace models)
+#             OpenAI, Anthropic, and other API providers
+#
+# GOOGLE COLAB (full capability):
+#   pip install -r requirements.txt
+#   pip install bitsandbytes accelerate   # for Mistral-7B, Llama-2 etc
+# ═══════════════════════════════════════════════════════════
 
 # ── Core UI ──────────────────────────────────────────────────────────────
 streamlit>=1.32.0
 
-# ── AI Model Support ─────────────────────────────────────────────────────
+# ── HuggingFace model support ─────────────────────────────────────────────
+# Required for flan-t5-small, flan-t5-xl, Mistral-7B etc
+torch>=2.0.0
 transformers>=4.36.0
-# torch is installed separately on Streamlit Cloud via packages.txt
-# For local install: pip install torch
 
 # ── PDF Report Generation ─────────────────────────────────────────────────
 reportlab>=4.0.0
 
-# ── Data Handling ─────────────────────────────────────────────────────────
+# ── Data and Utilities ────────────────────────────────────────────────────
 pandas>=2.0.0
 requests>=2.31.0
 
-# ── API Model Support (optional) ─────────────────────────────────────────
+# ── Semantic Evaluation (improves scoring accuracy) ───────────────────────
+sentence-transformers>=2.2.0
+
+# ── API Model Providers (optional — only needed for cloud models) ─────────
 openai>=1.0.0
 anthropic>=0.20.0
+boto3>=1.26.0
 
-# NOTE: selenium and webdriver-manager are NOT included here
-# They require Chrome which is not available on Streamlit Cloud
-# For black-box browser testing run locally:
-#   pip install selenium webdriver-manager
+# ── Black Box Browser Testing (optional — local/Colab only) ──────────────
+# Selenium requires Chrome which is NOT available on Streamlit Cloud.
+# For local or Colab black-box testing only:
+# pip install selenium webdriver-manager
+#
+# DO NOT uncomment these for Streamlit Cloud deployment:
+# selenium>=4.15.0
+# webdriver-manager>=4.0.0
+
+# ── Large Model Quantization (optional — Colab only, for 7B+ models) ─────
+# pip install bitsandbytes accelerate

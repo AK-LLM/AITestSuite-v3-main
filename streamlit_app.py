@@ -280,15 +280,15 @@ with st.sidebar:
                  "aws_bedrock", "azure_openai", "gcp_vertex", "ollama"],
         index=0,
         format_func=lambda x: {
-            "huggingface":  "🤗 HuggingFace (FREE — no key needed)",
-            "openai":       "🔵 OpenAI API",
-            "anthropic":    "🟣 Anthropic API",
+            "huggingface":  "🤗 HuggingFace (FREE — GPU required)",
+            "openai":       "🔵 OpenAI API (GPT-4o, GPT-4, GPT-3.5)",
+            "anthropic":    "🟣 Anthropic Claude API",
             "aws_bedrock":  "🟠 AWS Bedrock",
             "azure_openai": "🔷 Azure OpenAI",
             "gcp_vertex":   "🔴 GCP Vertex AI",
             "ollama":       "🦙 Ollama (Local)"
         }[x],
-        help="HuggingFace is FREE — no API key needed. Cloud providers require credentials."
+        help="HuggingFace models are free but require a GPU environment (Colab T4 or local GPU). API providers work from any environment."
     )
 
     model_defaults = {
@@ -429,6 +429,8 @@ with st.sidebar:
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
+    if model_type == "huggingface":
+        st.sidebar.info("ℹ️ HuggingFace models require a GPU environment (Colab T4 or local GPU). API providers work from any environment.")
     include_multilingual = st.sidebar.checkbox(
         "🌐 Multilingual Safety Tests",
         value=False,
@@ -1786,6 +1788,8 @@ if run_button:
                 api_key=api_key
             )
             with st.spinner(f"Initialising {model_name}..."):
+                if model_type == "huggingface":
+                    status_text.text(f"Loading {model_name} — this may take 2-5 minutes on first run...")
                 adapter.load()
 
             # ── Step 2: Build core test suite ─────────────────────────
