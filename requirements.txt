@@ -81,3 +81,8 @@ pytest>=7.4.0
 # selenium>=4.15.0        — requires Chrome, not on Streamlit Cloud
 # webdriver-manager       — same issue
 # Install locally only: pip install selenium webdriver-manager
+
+# ── Garak LLM Vulnerability Scanner (optional but recommended) ──────────────
+# pip install garak  — adds 100+ additional probe categories
+# See core/garak_bridge.py for integration details
+# garak>=0.9.0

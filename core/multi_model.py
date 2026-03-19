@@ -182,6 +182,8 @@ class MultiModelOrchestrator:
                 test_suite += DEEPFAKE_VOICE_TESTS
                 from tests.module_u_social_engineering import SOCIAL_ENGINEERING_TESTS
                 test_suite += SOCIAL_ENGINEERING_TESTS
+                from tests.garak_probes import GARAK_PROBES
+                test_suite += GARAK_PROBES
                 from tests.attack_surface_tests import ATTACK_SURFACE_TESTS
                 test_suite += ATTACK_SURFACE_TESTS
                 from tests.adversarial_robustness_tests import ADVERSARIAL_ROBUSTNESS_TESTS
