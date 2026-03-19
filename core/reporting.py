@@ -25,15 +25,20 @@ DEPENDENCIES:
 
 import os
 import time
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.lib import colors
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer,
-    Table, TableStyle, HRFlowable, PageBreak
-)
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer,
+        Table, TableStyle, HRFlowable, PageBreak
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
 
 # ── Colour palette matching Streamlit UI ─────────────────────────────────
 COLOUR_PRIMARY  = colors.HexColor("#1a1a2e")   # Dark navy

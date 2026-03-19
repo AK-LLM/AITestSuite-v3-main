@@ -3,40 +3,29 @@
 # Author: Amarjit Khakh
 # ═══════════════════════════════════════════════════════════
 #
-# INSTALL ALL:
-#     pip install -r requirements.txt
-#
-# MINIMUM (HuggingFace only, no PDF):
-#     pip install streamlit transformers torch pandas
-#
-# FULL (all features):
-#     pip install -r requirements.txt
+# Streamlit Cloud safe — all heavy/optional packages removed
+# For local full install see README.md
 
 # ── Core UI ──────────────────────────────────────────────────────────────
-streamlit>=1.32.0       # Web interface
+streamlit>=1.32.0
 
 # ── AI Model Support ─────────────────────────────────────────────────────
-transformers>=4.36.0    # HuggingFace models (free, local)
-torch>=2.0.0            # PyTorch — runs underneath transformers
-openai>=1.0.0           # OpenAI API support (optional)
-anthropic>=0.20.0       # Anthropic Claude API support (optional)
+transformers>=4.36.0
+# torch is installed separately on Streamlit Cloud via packages.txt
+# For local install: pip install torch
 
 # ── PDF Report Generation ─────────────────────────────────────────────────
-reportlab>=4.0.0        # Professional PDF generation
+reportlab>=4.0.0
 
 # ── Data Handling ─────────────────────────────────────────────────────────
-pandas>=2.0.0           # DataFrames for results display
+pandas>=2.0.0
+requests>=2.31.0
 
-# ── Live Threat Intelligence ──────────────────────────────────────────────
-requests>=2.31.0        # HTTP requests to arXiv API
+# ── API Model Support (optional) ─────────────────────────────────────────
+openai>=1.0.0
+anthropic>=0.20.0
 
-# ── Black Box Browser Automation (optional) ───────────────────────────────
-# Only needed if using the Black Box Automated Testing mode
-# Install with: pip install selenium webdriver-manager
-selenium>=4.15.0           # Browser automation
-webdriver-manager>=4.0.0  # Auto-downloads matching ChromeDriver/GeckoDriver
-
-# ── Garak (optional — adds 100+ probes) ──────────────────────────────────
-# pip install garak
-# garak                 # LLM vulnerability scanner (optional)
-
+# NOTE: selenium and webdriver-manager are NOT included here
+# They require Chrome which is not available on Streamlit Cloud
+# For black-box browser testing run locally:
+#   pip install selenium webdriver-manager
