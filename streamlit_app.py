@@ -1327,18 +1327,26 @@ with tab_multimodel:
     </div>
     """, unsafe_allow_html=True)
 
-    num_models = st.number_input("Number of models to compare", min_value=2, max_value=5, value=2)
+    num_models = st.number_input("Number of models to compare", min_value=2, max_value=5, value=3)
     mm_configs = []
 
     for i in range(int(num_models)):
+        default_models = [
+            {"name": "google/flan-t5-small",                    "label": "Flan-T5-Small"},
+            {"name": "google/flan-t5-xl",                       "label": "Flan-T5-XL"},
+            {"name": "mistralai/Mistral-7B-Instruct-v0.2",      "label": "Mistral-7B"},
+            {"name": "microsoft/phi-2",                         "label": "Phi-2"},
+            {"name": "google/gemma-2b-it",                      "label": "Gemma-2B"},
+        ]
+        defaults = default_models[i] if i < len(default_models) else {"name": f"model-{i+1}", "label": f"Model {i+1}"}
         st.markdown(f"**Model {i+1}**")
         c1, c2, c3 = st.columns(3)
         with c1:
             mm_type = st.selectbox("Provider", ["huggingface","openai","anthropic","aws_bedrock","azure_openai","gcp_vertex","ollama"], key=f"mm_type_{i}")
         with c2:
-            mm_name = st.text_input("Model ID", value="google/flan-t5-small", key=f"mm_name_{i}")
+            mm_name = st.text_input("Model ID", value=defaults["name"], key=f"mm_name_{i}")
         with c3:
-            mm_label = st.text_input("Label", value=f"Model {i+1}", key=f"mm_label_{i}")
+            mm_label = st.text_input("Label", value=defaults["label"], key=f"mm_label_{i}")
         mm_key = None
         if mm_type != "huggingface":
             mm_key = st.text_input(f"API Key {i+1}", type="password", key=f"mm_key_{i}")
