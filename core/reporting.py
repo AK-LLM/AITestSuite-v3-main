@@ -107,6 +107,7 @@ class ReportGenerator:
         story += self._section_header(styles, model_info, domain_label, auditor_name, len(findings))
         story += self._section_verdict(styles, verdict)
         story += self._section_executive_summary(styles, findings, verdict, domain_label)
+        story += self._section_deployment_readiness(styles, findings)
         story += self._section_risk_matrix(styles, findings)
         story += self._section_statistical_summary(styles, findings)
         story.append(PageBreak())
@@ -444,6 +445,71 @@ class ReportGenerator:
                 ))
 
         story.append(Spacer(1, 0.5*cm))
+        return story
+
+    def _section_deployment_readiness(self, styles, findings):
+        """Clinical deployment readiness section with category gap analysis."""
+        from core.scoring import RiskScorer
+        scorer    = RiskScorer()
+        readiness = scorer.deployment_readiness(findings)
+        cats      = scorer.category_analysis(findings)
+
+        story = []
+        story.append(Paragraph("Clinical Deployment Readiness Assessment", styles["section"]))
+
+        # Summary row
+        dr_color = colors.HexColor("#27AE60") if readiness["deployment_ready"] else colors.HexColor("#C0392B")
+        status   = "READY FOR CONDITIONAL DEPLOYMENT" if readiness["deployment_ready"] else "NOT READY FOR DEPLOYMENT"
+
+        summary_data = [
+            ["Deployment Status", status],
+            ["Categories Meeting Minimum", f"{readiness['categories_meeting']} / {readiness['categories_total']}"],
+            ["Blocking Issues",   str(len(readiness["blocking_categories"]))],
+            ["Overall Recommendation", readiness["recommendation"][:120]],
+        ]
+        t = Table(summary_data, colWidths=[4*cm, 12*cm])
+        t.setStyle(TableStyle([
+            ("FONTNAME",  (0,0),(0,-1), "Helvetica-Bold"),
+            ("FONTSIZE",  (0,0),(-1,-1), 8),
+            ("BACKGROUND",(0,0),(0,-1), colors.HexColor("#F0F0F8")),
+            ("TEXTCOLOR", (1,0),(1,0), dr_color),
+            ("FONTNAME",  (1,0),(1,0), "Helvetica-Bold"),
+            ("GRID",      (0,0),(-1,-1), 0.3, colors.HexColor("#CCCCCC")),
+            ("PADDING",   (0,0),(-1,-1), 5),
+            ("ROWBACKGROUNDS",(0,0),(-1,-1),[colors.white, colors.HexColor("#FAFAFA")]),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 0.3*cm))
+
+        # Category gap table — only show failing categories
+        failing = {cat: data for cat, data in cats.items() if not data["meets_minimum"]}
+        if failing:
+            story.append(Paragraph("Categories Below Clinical Minimum", styles.get("body", styles["section"])))
+            story.append(Spacer(1, 0.1*cm))
+            gap_data = [["Category", "Pass Rate", "Required", "Gap", "Critical"]]
+            for cat, data in sorted(failing.items(), key=lambda x: x[1]["gap"], reverse=True)[:15]:
+                gap_data.append([
+                    cat[:35],
+                    f"{data['pass_pct']}%",
+                    f"{data['minimum_required']}%",
+                    f"-{data['gap']}%",
+                    str(data["critical"]),
+                ])
+            gt = Table(gap_data, colWidths=[6*cm, 2.2*cm, 2.2*cm, 2.2*cm, 2.2*cm])
+            gt.setStyle(TableStyle([
+                ("FONTNAME",     (0,0),(-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",     (0,0),(-1,-1), 8),
+                ("BACKGROUND",   (0,0),(-1,0), colors.HexColor("#1F3864")),
+                ("TEXTCOLOR",    (0,0),(-1,0), colors.white),
+                ("GRID",         (0,0),(-1,-1), 0.3, colors.HexColor("#CCCCCC")),
+                ("PADDING",      (0,0),(-1,-1), 4),
+                ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white, colors.HexColor("#FFF5F5")]),
+                ("TEXTCOLOR",    (3,1),(3,-1), colors.HexColor("#C0392B")),
+                ("FONTNAME",     (3,1),(3,-1), "Helvetica-Bold"),
+            ]))
+            story.append(gt)
+            story.append(Spacer(1, 0.3*cm))
+
         return story
 
     def _section_footer(self, styles):

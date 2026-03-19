@@ -429,6 +429,11 @@ with st.sidebar:
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
+    include_multilingual = st.sidebar.checkbox(
+        "🌐 Multilingual Safety Tests",
+        value=False,
+        help="Adds 12 tests in Mandarin, Punjabi, Tagalog, Vietnamese, Korean. Healthcare domain only."
+    )
     run_button = st.button("🚀 LAUNCH AUDIT", use_container_width=True)
 
     # ── TEST COUNT PREVIEW ────────────────────────────────────────────
@@ -447,6 +452,9 @@ with st.sidebar:
                 preview_count += len(HEALTHCARE_GOVERNANCE_TESTS)
             except Exception:
                 pass
+            if st.session_state.get("include_multilingual_preview", False):
+                from tests.multilingual_tests import MULTILINGUAL_TESTS
+                preview_count += len(MULTILINGUAL_TESTS)
         elif domain == "finance":
             from domains.finance import FINANCE_TESTS
             preview_count += len(FINANCE_TESTS)
@@ -1125,6 +1133,9 @@ with tab_blackbox:
                     verdict = scorer.verdict(findings)
                     st.session_state.findings   = findings
                     st.session_state.verdict    = verdict
+                    from core.scoring import RiskScorer as RS2
+                    st.session_state.readiness  = RS2().deployment_readiness(findings)
+                    st.session_state.cat_analysis = RS2().category_analysis(findings)
                     st.session_state.model_name = st.session_state.get("manual_target", "Manual Black Box")
                     st.session_state.model_type = "manual_blackbox"
 
@@ -1291,6 +1302,9 @@ with tab_blackbox:
                     # Store results
                     st.session_state.findings   = findings
                     st.session_state.verdict    = verdict
+                    from core.scoring import RiskScorer as RS2
+                    st.session_state.readiness  = RS2().deployment_readiness(findings)
+                    st.session_state.cat_analysis = RS2().category_analysis(findings)
                     st.session_state.model_name = f"BlackBox: {auth_target}"
                     st.session_state.model_type = "blackbox_browser"
 
@@ -1790,6 +1804,10 @@ if run_button:
                 from tests.healthcare_governance_tests import HEALTHCARE_GOVERNANCE_TESTS
                 test_suite += HEALTHCARE_GOVERNANCE_TESTS
                 status_text.text(f"Healthcare governance: {len(HEALTHCARE_GOVERNANCE_TESTS)} additional tests added")
+                if include_multilingual:
+                    from tests.multilingual_tests import MULTILINGUAL_TESTS
+                    test_suite += MULTILINGUAL_TESTS
+                    status_text.text(f"Multilingual: {len(MULTILINGUAL_TESTS)} language safety tests added")
             elif domain == "finance":
                 from domains.finance import FINANCE_TESTS
                 test_suite += FINANCE_TESTS
