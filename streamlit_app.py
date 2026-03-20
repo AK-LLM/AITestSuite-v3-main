@@ -274,6 +274,12 @@ try:
         run_adversarial_scenarios
     )
     from core.simulation import SIMULATION_JOURNEYS, JourneyRunner
+    from core.autonomous_adversary import (
+        AutonomousAdversary, AdversaryMemory,
+        AUTONOMOUS_SCENARIOS, run_autonomous_scenarios
+    )
+    from core.audit_session import AuditSession, SessionReplayer
+    from core.decision_engine import DecisionEngine
     ADVANCED_MODULES_AVAILABLE = True
 except Exception as _adv_err:
     ADVANCED_MODULES_AVAILABLE = False
@@ -395,6 +401,27 @@ with st.sidebar:
         help="Sets Likelihood×Impact business weights for risk scoring"
     )
     st.session_state.business_context = business_context
+
+    daily_users = st.number_input(
+        "Daily AI Users",
+        min_value=1, max_value=50000, value=100, step=10,
+        help="Number of users interacting with the AI daily — affects impact estimates"
+    )
+    st.session_state.daily_users = daily_users
+
+    deployment_stage = st.selectbox(
+        "Deployment Stage",
+        options=["pilot","supervised","unsupervised","autonomous"],
+        index=1,
+        format_func=lambda x: {
+            "pilot":        "🔬 Pilot — limited users",
+            "supervised":   "👁️ Supervised — human review",
+            "unsupervised": "🤖 Unsupervised — no review",
+            "autonomous":   "⚡ Autonomous — AI takes actions",
+        }[x],
+        help="Deployment stage affects exploitation probability estimates"
+    )
+    st.session_state.deployment_stage = deployment_stage
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ── AUDIT MODE ────────────────────────────────────────────────────
@@ -552,15 +579,18 @@ with st.sidebar:
 # MAIN CONTENT — FOUR TABS
 # ════════════════════════════════════════════════════════════════════════
 
-tab_dashboard, tab_results, tab_risk, tab_compliance, tab_campaigns, tab_adversarial, tab_simulation, tab_intel, tab_blackbox, tab_multimodel, tab_monitor, tab_about = st.tabs([
+tab_dashboard, tab_results, tab_risk, tab_compliance, tab_decision, tab_campaigns, tab_adversarial, tab_autonomous, tab_simulation, tab_replay, tab_intel, tab_blackbox, tab_multimodel, tab_monitor, tab_about = st.tabs([
     "📊  Dashboard",
     "🔬  Audit Results",
     "⚡  Risk Engine",
     "📋  Compliance",
-    "🎯  Attack Campaigns",
-    "🤖  Adversarial Agents",
+    "🎯  Decision",
+    "🗡️  Campaigns",
+    "🤖  Agents",
+    "🧠  Autonomous",
     "🧭  Simulation",
-    "📡  Live Threat Intel",
+    "🔁  Replay",
+    "📡  Threat Intel",
     "🕵️  Black Box",
     "🔀  Multi-Model",
     "🔴  Monitor",
@@ -1500,6 +1530,300 @@ tool calls, and multi-step clinical or business processes.
                 st.warning("Load a model first (run an audit) then return here to run simulations.")
         else:
             st.info(f"No simulation journeys available for {sim_domain} yet.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB: DECISION ENGINE — Go/No-Go + Business Impact
+# ═══════════════════════════════════════════════════════════════════════
+
+with tab_decision:
+    st.markdown('<p class="section-header">🎯 Decision Engine — Go/No-Go + Business Impact</p>', unsafe_allow_html=True)
+
+    if not ADVANCED_MODULES_AVAILABLE:
+        st.warning("Advanced modules not available.")
+    elif "decision_report" not in st.session_state or st.session_state.decision_report is None:
+        st.info("Run an audit first to see deployment decision and business impact analysis.")
+        st.markdown("""
+**What this tab answers:**
+- Should we block deployment?
+- What is the annual loss exposure in CAD?
+- Which findings are exploitable today vs require advanced skill?
+- What is the priority remediation stack?
+- Regulator-ready summary paragraph for Health Canada / board
+
+Configure **Daily AI Users** and **Deployment Stage** in the sidebar for accurate estimates.
+""")
+    else:
+        dr = st.session_state.decision_report
+        gng = dr.get("go_no_go", {})
+
+        # GO / NO-GO banner
+        decision_text  = gng.get("decision","")
+        decision_color = gng.get("color","#333")
+        st.markdown(f"""
+<div style="background:{decision_color};color:white;padding:16px 20px;border-radius:10px;
+font-size:1.3em;font-weight:bold;margin:8px 0 16px 0;">
+{decision_text}
+</div>""", unsafe_allow_html=True)
+
+        # Hard blocks
+        hard_blocks = gng.get("hard_blocks", [])
+        if hard_blocks:
+            st.error(f"**Hard blocks (non-negotiable):** {' | '.join(hard_blocks[:3])}")
+
+        # Conditions
+        conditions = gng.get("conditions", [])
+        if conditions:
+            with st.expander("Deployment Conditions" if "CONDITIONAL" in decision_text else "Ongoing Requirements"):
+                for c in conditions:
+                    st.markdown(f"- {c}")
+
+        st.markdown(f"**Rationale:** {gng.get('rationale','')}")
+        st.divider()
+
+        # Metrics row
+        exp = dr.get("total_exposure", {})
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1: st.metric("Total Tests",       dr.get("total_tests", 0))
+        with c2: st.metric("Failures",          dr.get("total_failures", 0))
+        with c3: st.metric("Critical Failures", dr.get("critical_failures", 0))
+        with c4: st.metric("Annual Exposure Low", f"${exp.get('low_cad',0):,}")
+        with c5: st.metric("Annual Exposure High", f"${exp.get('high_cad',0):,}")
+
+        st.caption(f"⚠️  {exp.get('note','Estimates only.')}")
+        st.divider()
+
+        # Exploitability
+        st.markdown("### Exploitability Assessment")
+        expl = dr.get("exploitability", {})
+        ec1, ec2, ec3 = st.columns(3)
+        with ec1:
+            st.markdown(f"""<div style="background:#FFE8E8;padding:12px;border-radius:8px;text-align:center;">
+<div style="font-size:0.8em;color:#666;">LOW complexity</div>
+<div style="font-size:2em;font-weight:bold;color:#C0392B;">{expl.get("LOW_complexity_exploitable",0)}</div>
+<div style="font-size:0.75em;color:#888;">Exploitable by anyone</div></div>""", unsafe_allow_html=True)
+        with ec2:
+            st.markdown(f"""<div style="background:#FFF3E0;padding:12px;border-radius:8px;text-align:center;">
+<div style="font-size:0.8em;color:#666;">MEDIUM complexity</div>
+<div style="font-size:2em;font-weight:bold;color:#B8860B;">{expl.get("MEDIUM_complexity_exploitable",0)}</div>
+<div style="font-size:0.75em;color:#888;">Moderate skill needed</div></div>""", unsafe_allow_html=True)
+        with ec3:
+            st.markdown(f"""<div style="background:#E8F5E9;padding:12px;border-radius:8px;text-align:center;">
+<div style="font-size:0.8em;color:#666;">HIGH complexity</div>
+<div style="font-size:2em;font-weight:bold;color:#1E7145;">{expl.get("HIGH_complexity_exploitable",0)}</div>
+<div style="font-size:0.75em;color:#888;">Advanced knowledge needed</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"*{expl.get('summary','')}*")
+        st.divider()
+
+        # Priority Stack
+        st.markdown("### Priority Remediation Stack")
+        priority = dr.get("priority_stack", [])
+        if priority:
+            import pandas as pd
+            df = pd.DataFrame([{
+                "Rank": p["rank"],
+                "Finding": p["finding_name"],
+                "Tier": p["risk_tier"],
+                "Complexity": p["attack_complexity"],
+                "Timeline": p["timeline"],
+                "Annual CAD": f"${p['annual_exposure_cad']:,}",
+                "Regulatory": p["regulatory_note"][:50],
+            } for p in priority])
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        st.divider()
+
+        # Regulator summary
+        st.markdown("### Regulator-Ready Summary")
+        st.markdown(f"*{dr.get('regulator_summary','')}*")
+
+        if st.button("📋 Copy Summary to Clipboard Prep", use_container_width=True):
+            st.code(dr.get("regulator_summary",""), language=None)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB: AUTONOMOUS ADVERSARY
+# ═══════════════════════════════════════════════════════════════════════
+
+with tab_autonomous:
+    st.markdown('<p class="section-header">🧠 Autonomous Adversary — Adaptive Goal-Directed Attacks</p>', unsafe_allow_html=True)
+
+    if not ADVANCED_MODULES_AVAILABLE:
+        st.warning("Advanced modules not available.")
+    else:
+        st.markdown("""
+Unlike scripted agents, the Autonomous Adversary **reads each response and decides** what to do next.
+
+| Feature | Scripted Agent | Autonomous Adversary |
+|---------|---------------|----------------------|
+| Next move | Pre-written list | **Decided from response** |
+| Memory | RAM only | **File-backed across sessions** |
+| Strategy | Fixed order | **Adaptive to what worked** |
+| Learning | None | **Weighted by historical success** |
+""")
+
+        st.markdown("### Available Scenarios")
+        import pandas as pd
+        sc_df = pd.DataFrame([{
+            "ID": s["id"], "Name": s["name"],
+            "Domain": s["domain"], "Max Turns": s["max_turns"],
+            "Goal": s["goal"][:70],
+        } for s in AUTONOMOUS_SCENARIOS])
+        st.dataframe(sc_df, use_container_width=True, hide_index=True)
+
+        # Mode selector
+        mode = st.radio("Decision Mode", ["Rule-Based Adaptive (no 2nd model)", "LLM Planner (uses loaded model as planner)"], horizontal=True)
+
+        sc_options = [f"{s['id']} — {s['name']}" for s in AUTONOMOUS_SCENARIOS]
+        selected_label = st.selectbox("Select Scenario", sc_options)
+        selected_sc = next((s for s in AUTONOMOUS_SCENARIOS if f"{s['id']} — {s['name']}" == selected_label), AUTONOMOUS_SCENARIOS[0])
+
+        with st.expander("Scenario Details"):
+            st.markdown(f"**Goal:** {selected_sc['goal']}")
+            st.markdown(f"**Category:** {selected_sc['category']}")
+            st.markdown(f"**Max Turns:** {selected_sc['max_turns']}")
+
+        # Memory profile
+        try:
+            mem = AdversaryMemory()
+            profile = mem.get_profile_summary()
+            if profile["total_sessions"] > 0:
+                st.info(f"**Memory:** {profile['total_sessions']} prior sessions | "
+                        f"{profile['total_goals_achieved']} goals achieved | "
+                        f"Top strategies: {[s[0] for s in profile['top_strategies'][:2]]}")
+        except Exception:
+            pass
+
+        if "adapter" in st.session_state and st.session_state.adapter is not None:
+            if st.button(f"▶ Run Autonomous Adversary: {selected_sc['id']}", use_container_width=True):
+                with st.spinner("Running autonomous adversary (reads responses, decides next move)..."):
+                    try:
+                        planner = st.session_state.adapter if "LLM Planner" in mode else None
+                        adversary = AutonomousAdversary(
+                            target_adapter=st.session_state.adapter,
+                            goal=selected_sc["goal"],
+                            domain=selected_sc["domain"],
+                            category=selected_sc["category"],
+                            planner_adapter=planner,
+                            max_turns=selected_sc["max_turns"],
+                            verbose=False,
+                        )
+                        result = adversary.run()
+
+                        color = result["risk_color"]
+                        st.markdown(f"""
+<div style="background:{color};color:white;padding:12px;border-radius:8px;font-weight:bold;margin:8px 0;">
+{result["risk_level"]} — Goal achieved: {result["goal_achieved"]}
+</div>""", unsafe_allow_html=True)
+
+                        turn_rows = [{"Turn": t["turn"], "Strategy": t["strategy"],
+                            "Response Type": t["response_type"],
+                            "Status": "✅ Defended" if t["safety_held"] else "❌ Compromised",
+                            "Prompt": t["prompt"][:60], "Response": t["response"][:60]}
+                            for t in result["turn_results"] if "error" not in t]
+                        if turn_rows:
+                            st.dataframe(pd.DataFrame(turn_rows), use_container_width=True, hide_index=True)
+
+                        if result.get("memory_profile", {}).get("top_strategies"):
+                            st.info(f"Memory updated. Top strategies: {[s[0] for s in result['memory_profile']['top_strategies'][:3]]}")
+
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+            if st.button("🧠 Run ALL Autonomous Scenarios", use_container_width=True):
+                with st.spinner("Running all autonomous scenarios with adaptive decision-making..."):
+                    try:
+                        planner = st.session_state.adapter if "LLM Planner" in mode else None
+                        results = run_autonomous_scenarios(
+                            st.session_state.adapter, domain="healthcare",
+                            planner_adapter=planner, verbose=False
+                        )
+                        achieved = sum(1 for r in results if r.get("goal_achieved"))
+                        st.metric("Goals Achieved", f"{achieved}/{len(results)}")
+                        rows = [{"ID": r.get("scenario_id",""), "Name": r.get("scenario_name","")[:40],
+                            "Result": r["risk_level"][:35], "Turns": r["turns_total"],
+                            "Defended": r["turns_defended"]} for r in results]
+                        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+        else:
+            st.warning("Load a model first (run an audit) then return here.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TAB: AUDIT REPLAY — Deterministic replay + evidence chain
+# ═══════════════════════════════════════════════════════════════════════
+
+with tab_replay:
+    st.markdown('<p class="section-header">🔁 Audit Replay — Deterministic Evidence Chain</p>', unsafe_allow_html=True)
+
+    if not ADVANCED_MODULES_AVAILABLE:
+        st.warning("Advanced modules not available.")
+    else:
+        st.markdown("""
+Every audit creates a cryptographically-chained evidence log. You can replay any past
+audit and compare results to detect regression or improvement.
+
+**Evidence chain:** Each log entry includes a SHA-256 hash of all previous entries.
+Any modification to the log is detectable. Suitable for regulatory submissions.
+""")
+
+        # Current session
+        if "session_id" in st.session_state:
+            sid = st.session_state.session_id
+            st.success(f"**Current session:** `{sid}`")
+            st.markdown("This session has been logged with full evidence chain.")
+
+            col_r1, col_r2 = st.columns(2)
+            with col_r1:
+                if st.button("🔍 Verify Evidence Chain Integrity", use_container_width=True):
+                    try:
+                        replayer = SessionReplayer(sid)
+                        integrity = replayer.verify_chain_integrity()
+                        if integrity["valid"]:
+                            st.success(f"✅ Chain intact — {integrity['entries_checked']} entries verified")
+                        else:
+                            st.error(f"❌ Chain broken: {integrity.get('reason')}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            with col_r2:
+                if "adapter" in st.session_state and st.session_state.adapter is not None:
+                    if st.button("🔁 Replay Current Session", use_container_width=True):
+                        with st.spinner("Replaying session — running same prompts in same order..."):
+                            try:
+                                replayer = SessionReplayer(sid)
+                                replay = replayer.replay(st.session_state.adapter, verbose=False)
+                                col_a, col_b, col_c, col_d = st.columns(4)
+                                with col_a: st.metric("Original Pass Rate", f"{replay['original_pass_rate']*100:.1f}%")
+                                with col_b: st.metric("Replay Pass Rate", f"{replay['replay_pass_rate']*100:.1f}%")
+                                with col_c: st.metric("Regressions", replay["regressions"])
+                                with col_d: st.metric("Progressions", replay["progressions"])
+                                st.markdown(f"**Verdict change:** {replay['verdict_change']}")
+                                if replay["regression_list"]:
+                                    st.warning(f"**Regressions:** {', '.join(replay['regression_list'][:5])}")
+                                if replay["progression_list"]:
+                                    st.success(f"**Progressions:** {', '.join(replay['progression_list'][:5])}")
+                            except Exception as e:
+                                st.error(f"Replay error: {e}")
+
+        # Historical sessions
+        st.divider()
+        st.markdown("### Available Sessions")
+        try:
+            sessions = SessionReplayer.list_sessions()
+            if sessions:
+                import pandas as pd
+                df = pd.DataFrame([{
+                    "Session ID": s["session_id"][:18]+"...",
+                    "Model": s["model"][:30],
+                    "Domain": s["domain"],
+                    "Date": s["date"][:10],
+                    "Tests": s["tests"],
+                } for s in sessions])
+                st.dataframe(df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No completed sessions yet. Run an audit to create a replayable session.")
+        except Exception:
+            st.info("No sessions directory yet. Run an audit to create replayable sessions.")
 
 
 with tab_intel:
@@ -2485,6 +2809,16 @@ if run_button:
                     status_text.text(f"Loading {model_name} — this may take 2-5 minutes on first run...")
                 adapter.load()
             st.session_state.adapter = adapter  # Store for campaign/agent/simulation tabs
+            # Start an auditable session
+            try:
+                if ADVANCED_MODULES_AVAILABLE:
+                    st.session_state.audit_session = AuditSession(
+                        model_name=model_name,
+                        domain=domain,
+                        auditor=st.session_state.get("auditor_name","Amarjit Khakh"),
+                    )
+            except Exception:
+                pass
 
             # ── Step 2: Build core test suite ─────────────────────────
             from tests.default_tests import DEFAULT_TESTS
@@ -2758,6 +3092,39 @@ if run_button:
                 st.session_state.compliance_report = compliance_report
             except Exception as cm_err:
                 st.session_state.compliance_report = None
+
+            # ── Decision Engine: Business impact + go/no-go ───────────────
+            try:
+                if ADVANCED_MODULES_AVAILABLE:
+                    biz = st.session_state.get("business_context", "hospital")
+                    users = st.session_state.get("daily_users", 100)
+                    stage = st.session_state.get("deployment_stage", "supervised")
+                    dec_engine = DecisionEngine(
+                        org_type=biz,
+                        daily_users=users,
+                        deployment_stage=stage,
+                        region="canada_bc",
+                    )
+                    decision_report = dec_engine.analyze(
+                        all_findings,
+                        risk_summary=st.session_state.get("risk_aggregate"),
+                    )
+                    st.session_state.decision_report = decision_report
+            except Exception as _de:
+                st.session_state.decision_report = None
+
+            # ── Audit Session: Finalize with session ID ───────────────────
+            try:
+                if ADVANCED_MODULES_AVAILABLE and "audit_session" in st.session_state:
+                    session_id = st.session_state.audit_session.finalize(
+                        findings=all_findings,
+                        verdict=verdict,
+                        risk_summary=st.session_state.get("risk_aggregate"),
+                        compliance_report=st.session_state.get("compliance_report"),
+                    )
+                    st.session_state.session_id = session_id
+            except Exception as _as:
+                pass
 
             # ── Enrich findings with OWASP + MITRE mappings ───────────────
             try:
