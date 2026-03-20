@@ -263,6 +263,22 @@ st.markdown("""
 
 
 # ════════════════════════════════════════════════════════════════════════
+# ADVANCED MODULE IMPORTS — Risk Engine, Compliance, Campaigns, Agents, Simulation
+# ════════════════════════════════════════════════════════════════════════
+try:
+    from core.risk_engine import RiskEngine
+    from core.compliance_mapper import ComplianceMapper
+    from core.attack_campaigns import ATTACK_CAMPAIGNS, CampaignRunner
+    from core.adversarial_agent import (
+        ADVERSARIAL_SCENARIOS, GoalAgent,
+        run_adversarial_scenarios
+    )
+    from core.simulation import SIMULATION_JOURNEYS, JourneyRunner
+    ADVANCED_MODULES_AVAILABLE = True
+except Exception as _adv_err:
+    ADVANCED_MODULES_AVAILABLE = False
+
+# ════════════════════════════════════════════════════════════════════════
 # SIDEBAR — AUDIT CONFIGURATION
 # All settings the user needs before running an audit
 # ════════════════════════════════════════════════════════════════════════
