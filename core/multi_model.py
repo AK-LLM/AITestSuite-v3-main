@@ -47,6 +47,12 @@ import concurrent.futures
 import logging
 
 from core.scoring import RiskScorer
+try:
+    from core.risk_engine import RiskEngine
+    from core.compliance_mapper import ComplianceMapper
+    ADVANCED_AVAILABLE = True
+except Exception:
+    ADVANCED_AVAILABLE = False
 
 logger = logging.getLogger("AITestSuite.MultiModel")
 

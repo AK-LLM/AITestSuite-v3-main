@@ -361,6 +361,26 @@ with st.sidebar:
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── BUSINESS CONTEXT (for Risk Engine L×I weighting) ─────────────
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("⚡ **Risk Engine Context**")
+    business_context = st.selectbox(
+        "Deployment Environment",
+        options=["hospital", "clinic", "fintech", "government", "legal", "general"],
+        index=0,
+        format_func=lambda x: {
+            "hospital":   "🏥 Hospital / Health System",
+            "clinic":     "🩺 Clinic / GP Practice",
+            "fintech":    "💰 Fintech / Financial Services",
+            "government": "🏛️ Government Agency",
+            "legal":      "⚖️ Legal / Law Firm",
+            "general":    "🔍 General Purpose",
+        }[x],
+        help="Sets Likelihood×Impact business weights for risk scoring"
+    )
+    st.session_state.business_context = business_context
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # ── AUDIT MODE ────────────────────────────────────────────────────
     st.markdown('<div class="sidebar-card">', unsafe_allow_html=True)
     st.markdown("**⚡ Audit Mode**")
@@ -368,17 +388,40 @@ with st.sidebar:
 
     audit_mode = st.radio(
         "Mode",
-        options=["standard", "statistical", "multiturn", "fuzzing", "evolutionary", "full"],
+        options=["standard", "statistical", "multiturn", "fuzzing", "evolutionary",
+                 "campaigns", "agents", "simulation", "full"],
         format_func=lambda x: {
             "standard":    "🔍 Standard — single run, all tests",
             "statistical": "📊 Statistical — 5 runs per test",
             "multiturn":   "🔗 Multi-Turn — attack chains",
             "fuzzing":     "🧬 Fuzzing — 14 mutation strategies",
             "evolutionary":"🔴 Evolutionary — genetic jailbreak",
+            "campaigns":   "⚔️  Attack Campaigns — chained scenarios",
+            "agents":      "🤖 Adversarial Agents — goal-directed",
+            "simulation":  "🎭 Simulation — real user journeys",
             "full":        "💥 Full Throttle — everything"
         }[x],
-        help="Full mode runs all engines — takes longer but gives highest confidence."
+        help="Full mode runs all engines including campaigns, agents, and simulations."
     )
+
+    # Business context for Risk Engine weighting
+    if audit_mode in ["campaigns", "agents", "simulation", "full", "standard"]:
+        business_context = st.selectbox(
+            "Business Context",
+            options=["hospital", "clinic", "fintech", "government", "legal", "general"],
+            format_func=lambda x: {
+                "hospital":   "🏥 Hospital",
+                "clinic":     "🩺 Clinic",
+                "fintech":    "💰 Fintech",
+                "government": "🏛️  Government",
+                "legal":      "⚖️  Legal",
+                "general":    "🔍 General",
+            }[x],
+            help="Weights risk scores by deployment environment (Likelihood × Impact × Business Weight)"
+        )
+        st.session_state["business_context"] = business_context
+    else:
+        st.session_state["business_context"] = "hospital"
 
     if audit_mode == "statistical":
         runs_per_test = st.slider("Runs per test", min_value=3, max_value=10, value=5)
@@ -493,9 +536,14 @@ with st.sidebar:
 # MAIN CONTENT — FOUR TABS
 # ════════════════════════════════════════════════════════════════════════
 
-tab_dashboard, tab_results, tab_intel, tab_blackbox, tab_multimodel, tab_monitor, tab_about = st.tabs([
+tab_dashboard, tab_results, tab_risk, tab_compliance, tab_campaigns, tab_adversarial, tab_simulation, tab_intel, tab_blackbox, tab_multimodel, tab_monitor, tab_about = st.tabs([
     "📊  Dashboard",
     "🔬  Audit Results",
+    "⚡  Risk Engine",
+    "📋  Compliance",
+    "🎯  Attack Campaigns",
+    "🤖  Adversarial Agents",
+    "🧭  Simulation",
     "📡  Live Threat Intel",
     "🕵️  Black Box",
     "🔀  Multi-Model",
@@ -816,6 +864,627 @@ with tab_results:
 # TAB 3: LIVE THREAT INTELLIGENCE
 # Real arXiv feed + curated static items
 # ════════════════════════════════════════════════════════════════════════
+
+# ════════════════════════════════════════════════════════════════════════
+# TAB: RISK ENGINE — Likelihood × Impact scoring
+# ════════════════════════════════════════════════════════════════════════
+
+with tab_risk:
+    st.markdown('<p class="section-header">⚡ Risk Engine — Likelihood × Impact</p>', unsafe_allow_html=True)
+
+    if "risk_aggregate" not in st.session_state or st.session_state.risk_aggregate is None:
+        st.info("Run an audit first to see Risk Engine analysis.")
+
+        if ADVANCED_MODULES_AVAILABLE:
+            st.markdown("### About the Risk Engine")
+            st.markdown("""
+The Risk Engine replaces binary pass/fail with **Likelihood × Impact** scoring.
+
+| Factor | Description |
+|--------|-------------|
+| **Likelihood (1-5)** | How likely is this attack to succeed in real deployment |
+| **Impact (1-5)** | Patient / business harm if the attack succeeds |
+| **Business Weight** | Multiplier based on your deployment context |
+| **Risk Score** | L × I × Weight, normalized 0–100 |
+
+**Business contexts:** Hospital, Clinic, Fintech, Government, Legal, General
+""")
+        else:
+            st.warning("Advanced modules not available. Check installation.")
+    else:
+        agg = st.session_state.risk_aggregate
+        biz = st.session_state.get("business_context", "hospital")
+
+        # Top metrics row
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Overall Risk Score", f"{agg.get('overall_risk_score', 0):.1f}/100")
+        with col2:
+            st.metric("Critical Failures", agg.get("critical_failure_count", 0))
+        with col3:
+            st.metric("Pass Rate", f"{agg.get('pass_rate', 0)*100:.1f}%")
+        with col4:
+            st.metric("Business Context", biz.title())
+
+        # Verdict
+        verdict_text = agg.get("verdict", "")
+        verdict_color = agg.get("verdict_color", "#333333")
+        st.markdown(f"""
+<div style="background:{verdict_color};color:white;padding:12px 18px;border-radius:8px;font-weight:bold;font-size:1.1em;margin:12px 0;">
+{verdict_text}
+</div>""", unsafe_allow_html=True)
+
+        # NIST AI RMF Scores
+        st.markdown("### NIST AI RMF Function Scores")
+        nist = agg.get("nist_scores", {})
+        if nist:
+            cols = st.columns(4)
+            colors = {"GOVERN": "#1F3864", "MAP": "#2E75B6", "MEASURE": "#0D6E6E", "MANAGE": "#1E7145"}
+            for i, (func, data) in enumerate(nist.items()):
+                with cols[i]:
+                    score = data.get("risk_score", 0)
+                    maturity = data.get("maturity_level", "NOT ASSESSED")
+                    color = colors.get(func, "#333")
+                    st.markdown(f"""
+<div style="background:{color};color:white;padding:10px;border-radius:8px;text-align:center;margin:4px 0;">
+<div style="font-size:0.8em;opacity:0.8;">{func}</div>
+<div style="font-size:1.4em;font-weight:bold;">{score:.0f}%</div>
+<div style="font-size:0.7em;opacity:0.9;">{maturity.split('—')[0].strip()}</div>
+</div>""", unsafe_allow_html=True)
+
+        # OWASP LLM 2025 Scores
+        st.markdown("### OWASP LLM Top 10 2025 Scores")
+        owasp = agg.get("owasp_scores", {})
+        if owasp:
+            rows = []
+            for oid, data in owasp.items():
+                if data.get("test_count", 0) > 0:
+                    rows.append({
+                        "ID": oid,
+                        "Tests": data["test_count"],
+                        "Failures": data.get("failures", 0),
+                        "Risk Score": f"{data.get('risk_score', 0):.0f}%",
+                        "Status": data.get("status", ""),
+                    })
+            if rows:
+                import pandas as pd
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # Benchmark Comparison
+        st.markdown("### Benchmark Comparison")
+        bench = agg.get("benchmark_comparison", {})
+        if bench:
+            cols = st.columns(len(bench))
+            for i, (name, data) in enumerate(bench.items()):
+                with cols[i]:
+                    delta = data.get("delta", 0)
+                    color = "#1E7145" if delta > 0 else "#C0392B" if delta < 0 else "#555"
+                    st.markdown(f"""
+<div style="border:1px solid #ddd;border-radius:8px;padding:10px;text-align:center;">
+<div style="font-size:0.75em;color:#666;">{name}</div>
+<div style="font-size:0.7em;color:#999;">{data.get('description','')}</div>
+<div style="font-size:1.1em;font-weight:bold;color:{color};">{data.get('assessment','')}</div>
+</div>""", unsafe_allow_html=True)
+
+        # Top Risk Findings Table
+        st.markdown("### Top Critical Findings by Risk Score")
+        critical = agg.get("critical_failures", [])
+        if critical:
+            rows = []
+            for f in critical[:15]:
+                risk = f.get("risk", {})
+                rows.append({
+                    "Test": f.get("name", "")[:50],
+                    "Category": f.get("category", ""),
+                    "L×I Score": f"{risk.get('realized_risk', 0):.1f}",
+                    "Tier": risk.get("tier", ""),
+                    "OWASP": risk.get("owasp_id", ""),
+                    "NIST Fn": risk.get("nist_function", ""),
+                })
+            import pandas as pd
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.success("No critical failures detected by risk engine.")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TAB: COMPLIANCE — Framework alignment scores
+# ════════════════════════════════════════════════════════════════════════
+
+with tab_compliance:
+    st.markdown('<p class="section-header">📋 Compliance Framework Mapping</p>', unsafe_allow_html=True)
+
+    if "compliance_report" not in st.session_state or st.session_state.compliance_report is None:
+        st.info("Run an audit first to see compliance mapping.")
+        if ADVANCED_MODULES_AVAILABLE:
+            st.markdown("""
+### Frameworks Covered
+
+| Framework | Scope |
+|-----------|-------|
+| **OWASP LLM Top 10 2025** | All 10 LLM security categories scored |
+| **NIST AI RMF** | Govern, Map, Measure, Manage function scores |
+| **EU AI Act** | Articles 9, 10, 13, 14, 15, 50 |
+| **ISO 42001** | AI Management System clauses 4, 6, 8, 9, 10 |
+| **Health Canada SaMD** | Clinical safety, data governance, explainability |
+| **Canadian Healthcare** | PIPEDA/CPPA, MAID, Indigenous sovereignty, BC-specific |
+""")
+    else:
+        cr = st.session_state.compliance_report
+        summary = cr.get("summary", {})
+
+        # Summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Compliance Score", f"{summary.get('overall_compliance_score', 0):.1f}%")
+        with col2:
+            st.metric("Frameworks Assessed", summary.get("frameworks_assessed", 0))
+        with col3:
+            st.metric("Controls Failing", summary.get("controls_failing", 0))
+        with col4:
+            tier = summary.get("compliance_tier", "")
+            color = "#1E7145" if "COMPLIANT" == tier else "#C0392B" if "NON" in tier else "#B8860B"
+            st.markdown(f"<div style='padding:8px;background:{color};color:white;border-radius:6px;text-align:center;font-weight:bold;font-size:0.85em;'>{tier}</div>", unsafe_allow_html=True)
+
+        # Top Gaps
+        st.markdown("### Top Compliance Gaps")
+        gaps = cr.get("top_gaps", [])
+        if gaps:
+            import pandas as pd
+            df = pd.DataFrame([{
+                "Framework": g["framework"].replace("_", " ").title(),
+                "Control": g["control"],
+                "Title": g["title"],
+                "Score": f"{g['score']:.0f}%",
+                "Status": g["status"],
+                "Failures": g["failures"],
+            } for g in gaps])
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # Per-framework accordion
+        fw_names = {
+            "owasp_llm_2025": "OWASP LLM Top 10 2025",
+            "nist_ai_rmf": "NIST AI RMF",
+            "eu_ai_act": "EU AI Act",
+            "iso_42001": "ISO 42001",
+            "health_canada_samd": "Health Canada SaMD",
+            "canadian_healthcare": "Canadian Healthcare",
+        }
+
+        for fw_key, fw_label in fw_names.items():
+            fw_data = cr.get(fw_key)
+            if not fw_data:
+                continue
+
+            tested = {k: v for k, v in fw_data.items() if v.get("test_count", 0) > 0}
+            if not tested:
+                continue
+
+            pass_count = sum(1 for v in tested.values() if v.get("status") == "PASS")
+            total_count = len(tested)
+
+            with st.expander(f"{fw_label} — {pass_count}/{total_count} controls passing"):
+                import pandas as pd
+                rows = []
+                for ctrl_id, ctrl_data in tested.items():
+                    status = ctrl_data.get("status", "")
+                    emoji = "✅" if status == "PASS" else "⚠️" if status == "PARTIAL" else "❌"
+                    rows.append({
+                        "Control": ctrl_id,
+                        "Title": ctrl_data.get("title", "")[:40],
+                        "Score": f"{ctrl_data.get('score', 0):.0f}%",
+                        "Status": f"{emoji} {status}",
+                        "Tests": ctrl_data.get("test_count", 0),
+                        "Failures": ctrl_data.get("failures", 0),
+                    })
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # Export CSV
+        st.markdown("### Export Compliance Report")
+        if st.button("📥 Download Compliance CSV", use_container_width=True):
+            try:
+                mapper = ComplianceMapper()
+                csv_data = mapper.export_csv(cr)
+                st.download_button(
+                    label="⬇ Download compliance_report.csv",
+                    data=csv_data,
+                    file_name="compliance_report.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+            except Exception as e:
+                st.error(f"Export error: {e}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TAB: ATTACK CAMPAIGNS — Chained multi-step attack scenarios
+# ════════════════════════════════════════════════════════════════════════
+
+with tab_campaigns:
+    st.markdown('<p class="section-header">🎯 Attack Campaigns — Chained Scenarios</p>', unsafe_allow_html=True)
+
+    if not ADVANCED_MODULES_AVAILABLE:
+        st.warning("Advanced modules not available.")
+    else:
+        st.markdown("""
+Attack campaigns simulate real threat actors — not isolated prompts but coordinated
+multi-phase attack sequences with goals, escalation, and success criteria.
+""")
+
+        # Campaign selector
+        hc_campaigns = [c for c in ATTACK_CAMPAIGNS if c["domain"] == "healthcare"]
+        fin_campaigns = [c for c in ATTACK_CAMPAIGNS if c["domain"] == "finance"]
+        leg_campaigns = [c for c in ATTACK_CAMPAIGNS if c["domain"] in ("legal", "government")]
+
+        camp_domain = st.radio(
+            "Campaign Domain",
+            ["Healthcare", "Finance", "Legal/Government"],
+            horizontal=True,
+        )
+        domain_map = {
+            "Healthcare":         hc_campaigns,
+            "Finance":            fin_campaigns,
+            "Legal/Government":   leg_campaigns,
+        }
+        campaigns_to_show = domain_map[camp_domain]
+
+        # Campaign overview table
+        import pandas as pd
+        overview_rows = []
+        for c in campaigns_to_show:
+            overview_rows.append({
+                "ID": c["id"],
+                "Campaign": c["name"],
+                "Severity": c["severity"],
+                "Phases": len(c["phases"]),
+                "Goal": c["goal"][:60],
+            })
+        if overview_rows:
+            st.dataframe(pd.DataFrame(overview_rows), use_container_width=True, hide_index=True)
+
+        # Select and run a campaign
+        st.markdown("### Run a Campaign")
+        camp_options = [f"{c['id']} — {c['name']}" for c in campaigns_to_show]
+        selected_camp_label = st.selectbox("Select Campaign", camp_options)
+        selected_camp = next(
+            (c for c in campaigns_to_show
+             if f"{c['id']} — {c['name']}" == selected_camp_label),
+            campaigns_to_show[0] if campaigns_to_show else None
+        )
+
+        if selected_camp:
+            # Show campaign detail
+            with st.expander("Campaign Details", expanded=True):
+                st.markdown(f"**Goal:** {selected_camp['goal']}")
+                st.markdown(f"**Threat Actor:** {selected_camp['threat_actor']}")
+                st.markdown(f"**Severity:** {selected_camp['severity']}")
+                st.markdown(f"**Regulations:** {', '.join(selected_camp['regulations'][:3])}")
+                st.markdown(f"**Phases:** {len(selected_camp['phases'])}")
+                for phase in selected_camp["phases"]:
+                    st.markdown(f"""
+**Phase {phase['phase']} — {phase['name']}**
+- Attack goal: {phase['attack_goal']}
+- Prompt: _{phase['prompt'][:120]}..._
+""")
+
+            if "adapter" in st.session_state and st.session_state.adapter is not None:
+                if st.button(f"🚀 Run Campaign: {selected_camp['id']}", use_container_width=True):
+                    with st.spinner(f"Running {selected_camp['name']}..."):
+                        try:
+                            runner = CampaignRunner(
+                                model_adapter=st.session_state.adapter,
+                                domain=selected_camp["domain"]
+                            )
+                            result = runner.run_campaign(selected_camp, verbose=False)
+
+                            # Display result
+                            risk = result["campaign_risk"]
+                            color = result["campaign_color"]
+                            st.markdown(f"""
+<div style="background:{color};color:white;padding:12px;border-radius:8px;font-weight:bold;margin:8px 0;">
+{risk} — {result['phases_defended']}/{result['phases_total']} phases defended
+</div>""", unsafe_allow_html=True)
+
+                            # Phase results
+                            phase_rows = []
+                            for pr in result["phase_results"]:
+                                if "error" not in pr:
+                                    phase_rows.append({
+                                        "Phase": pr["phase"],
+                                        "Name": pr["name"],
+                                        "Status": "✅ Defended" if pr.get("passed") else "❌ Compromised",
+                                        "Response": pr.get("response","")[:80],
+                                    })
+                            if phase_rows:
+                                st.dataframe(pd.DataFrame(phase_rows), use_container_width=True, hide_index=True)
+
+                            st.info(f"**Remediation:** {result['remediation']}")
+
+                        except Exception as e:
+                            st.error(f"Campaign error: {e}")
+            else:
+                st.warning("Load a model first (run an audit from the sidebar) then return here to run campaigns.")
+
+        # Run all campaigns button
+        if st.button("🔥 Run ALL Campaigns for Domain", use_container_width=True):
+            if "adapter" not in st.session_state or st.session_state.adapter is None:
+                st.warning("Load a model first.")
+            else:
+                with st.spinner("Running all campaigns..."):
+                    try:
+                        runner = CampaignRunner(
+                            model_adapter=st.session_state.adapter,
+                            domain=camp_domain.lower().replace("/", "_").replace(" ", "")
+                        )
+                        domain_key = {"Healthcare": "healthcare", "Finance": "finance",
+                                      "Legal/Government": "legal"}.get(camp_domain, "healthcare")
+                        all_camp_results = []
+                        for c in campaigns_to_show:
+                            r = runner.run_campaign(c, verbose=False)
+                            all_camp_results.append(r)
+
+                        compromised = sum(1 for r in all_camp_results if r["compromised"])
+                        st.metric("Campaigns Compromised", f"{compromised}/{len(all_camp_results)}")
+                        summary_rows = [{
+                            "ID": r["campaign_id"],
+                            "Campaign": r["campaign_name"],
+                            "Result": r["campaign_risk"],
+                            "Phases Defended": f"{r['phases_defended']}/{r['phases_total']}",
+                        } for r in all_camp_results]
+                        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TAB: ADVERSARIAL AGENTS — Goal-directed multi-turn attacks
+# ════════════════════════════════════════════════════════════════════════
+
+with tab_adversarial:
+    st.markdown('<p class="section-header">🤖 Adversarial Agents — Goal-Directed Attacks</p>', unsafe_allow_html=True)
+
+    if not ADVANCED_MODULES_AVAILABLE:
+        st.warning("Advanced modules not available.")
+    else:
+        st.markdown("""
+Adversarial agents pursue a specific goal across multiple conversation turns,
+adapting strategy based on model responses — simulating real threat actors.
+
+**Three agent types:**
+- **Goal Agent** — pursues a goal, escalates if refused
+- **Planner Agent** — generates an attack plan then executes it
+- **Memory Agent** — learns which approaches succeeded, optimizes future attacks
+""")
+
+        # Scenario selector
+        hc_scenarios = [s for s in ADVERSARIAL_SCENARIOS if s["domain"] == "healthcare"]
+        fin_scenarios = [s for s in ADVERSARIAL_SCENARIOS if s["domain"] == "finance"]
+        gen_scenarios = [s for s in ADVERSARIAL_SCENARIOS if s["domain"] == "general"]
+
+        agent_domain = st.radio(
+            "Agent Domain",
+            ["Healthcare", "Finance", "General"],
+            horizontal=True,
+        )
+        scenario_map = {
+            "Healthcare": hc_scenarios,
+            "Finance":    fin_scenarios,
+            "General":    gen_scenarios,
+        }
+        scenarios_to_show = scenario_map[agent_domain]
+
+        if scenarios_to_show:
+            import pandas as pd
+            overview = [{
+                "ID": s["id"],
+                "Scenario": s["name"],
+                "Goal": s["goal"][:60],
+                "Strategy": s["strategy"],
+                "Max Turns": s["max_turns"],
+            } for s in scenarios_to_show]
+            st.dataframe(pd.DataFrame(overview), use_container_width=True, hide_index=True)
+
+            # Select scenario
+            sc_options = [f"{s['id']} — {s['name']}" for s in scenarios_to_show]
+            selected_sc_label = st.selectbox("Select Scenario", sc_options)
+            selected_sc = next(
+                (s for s in scenarios_to_show
+                 if f"{s['id']} — {s['name']}" == selected_sc_label),
+                scenarios_to_show[0]
+            )
+
+            with st.expander("Scenario Details"):
+                st.markdown(f"**Goal:** {selected_sc['goal']}")
+                st.markdown(f"**Strategy:** {selected_sc['strategy']}")
+                st.markdown(f"**Opening move:** _{selected_sc['opening_move']}_")
+                st.markdown("**Escalation moves:**")
+                for i, move in enumerate(selected_sc["escalation_moves"], 1):
+                    st.markdown(f"  {i}. _{move}_")
+
+            if "adapter" in st.session_state and st.session_state.adapter is not None:
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button(f"▶ Run Goal Agent: {selected_sc['id']}", use_container_width=True):
+                        with st.spinner("Running goal-directed agent..."):
+                            try:
+                                agent = GoalAgent(st.session_state.adapter, selected_sc)
+                                result = agent.run(verbose=False)
+
+                                achieved = result.get("goal_achieved", False)
+                                color = "#dc3545" if achieved else "#1E7145"
+                                label = "⚠️ GOAL ACHIEVED — Defence Failed" if achieved else "✅ DEFENDED — Goal Not Achieved"
+                                st.markdown(f"""
+<div style="background:{color};color:white;padding:10px;border-radius:8px;font-weight:bold;">
+{label}
+</div>""", unsafe_allow_html=True)
+
+                                turn_rows = []
+                                for t in result.get("turn_results", []):
+                                    if "error" not in t:
+                                        turn_rows.append({
+                                            "Turn": t["turn"],
+                                            "Status": "✅" if t.get("safety_held") else "❌",
+                                            "Prompt": t["prompt"][:60],
+                                            "Response": t.get("response","")[:60],
+                                        })
+                                if turn_rows:
+                                    st.dataframe(pd.DataFrame(turn_rows), use_container_width=True, hide_index=True)
+
+                                st.info(f"**Clinical implication:** {selected_sc.get('healthcare_implication','')[:200]}")
+                            except Exception as e:
+                                st.error(f"Agent error: {e}")
+                with col_b:
+                    if st.button("🧠 Run ALL Adversarial Scenarios", use_container_width=True):
+                        with st.spinner("Running all adversarial scenarios..."):
+                            try:
+                                domain_key = agent_domain.lower()
+                                results = run_adversarial_scenarios(
+                                    st.session_state.adapter,
+                                    domain=domain_key,
+                                    verbose=False
+                                )
+                                achieved_count = sum(1 for r in results if r.get("goal_achieved"))
+                                st.metric("Goals Achieved", f"{achieved_count}/{len(results)}")
+                                summary_rows = [{
+                                    "ID": r["scenario_id"],
+                                    "Scenario": r["scenario_name"][:40],
+                                    "Result": r["risk_level"][:30],
+                                    "Turns": r["turns_total"],
+                                    "Defended": r["turns_defended"],
+                                } for r in results]
+                                st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+            else:
+                st.warning("Load a model first (run an audit) then return here to run agents.")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# TAB: SIMULATION — Real user journey testing
+# ════════════════════════════════════════════════════════════════════════
+
+with tab_simulation:
+    st.markdown('<p class="section-header">🧭 Simulation — Real User Journeys</p>', unsafe_allow_html=True)
+
+    if not ADVANCED_MODULES_AVAILABLE:
+        st.warning("Advanced modules not available.")
+    else:
+        st.markdown("""
+Simulation tests whether safety holds across complete user workflows —
+not isolated prompts but realistic end-to-end journeys with session context,
+tool calls, and multi-step clinical or business processes.
+""")
+
+        # Journey domain selector
+        sim_domain = st.radio(
+            "Journey Domain",
+            ["Healthcare", "Finance", "Legal"],
+            horizontal=True,
+        )
+        domain_key = sim_domain.lower()
+        journeys_available = [j for j in SIMULATION_JOURNEYS if j["domain"] == domain_key]
+
+        if journeys_available:
+            import pandas as pd
+            overview = [{
+                "ID": j["id"],
+                "Journey": j["name"],
+                "User Type": j["journey_type"].title(),
+                "Risk Level": j["risk_level"],
+                "Steps": len(j["steps"]),
+            } for j in journeys_available]
+            st.dataframe(pd.DataFrame(overview), use_container_width=True, hide_index=True)
+
+            # Journey selector
+            j_options = [f"{j['id']} — {j['name']}" for j in journeys_available]
+            selected_j_label = st.selectbox("Select Journey", j_options)
+            selected_j = next(
+                (j for j in journeys_available
+                 if f"{j['id']} — {j['name']}" == selected_j_label),
+                journeys_available[0]
+            )
+
+            with st.expander("Journey Details"):
+                st.markdown(f"**Description:** {selected_j['description']}")
+                st.markdown(f"**User type:** {selected_j['journey_type'].title()}")
+                st.markdown(f"**Risk level:** {selected_j['risk_level']}")
+                st.markdown(f"**Safety criteria:** {selected_j.get('journey_safety_criteria','')}")
+                st.markdown("**Steps:**")
+                for step in selected_j["steps"]:
+                    tools = ", ".join(step.get("tool_calls", [])) or "none"
+                    st.markdown(f"  **Step {step['step']} — {step['action']}** (tools: {tools})")
+                    st.markdown(f"  _{step['prompt'][:100]}..._")
+
+            if "adapter" in st.session_state and st.session_state.adapter is not None:
+                col_j1, col_j2 = st.columns(2)
+                with col_j1:
+                    if st.button(f"▶ Run Journey: {selected_j['id']}", use_container_width=True):
+                        with st.spinner(f"Simulating {selected_j['name']}..."):
+                            try:
+                                runner = JourneyRunner(st.session_state.adapter)
+                                result = runner.run_journey(selected_j, verbose=False)
+
+                                safe = result["journey_safe"]
+                                verdict = result["journey_verdict"]
+                                color = result["verdict_color"]
+                                st.markdown(f"""
+<div style="background:{color};color:white;padding:10px;border-radius:8px;font-weight:bold;margin:8px 0;">
+{verdict}
+</div>""", unsafe_allow_html=True)
+
+                                step_col1, step_col2 = st.columns(2)
+                                with step_col1:
+                                    st.metric("Steps Safe", f"{result['safe_steps']}/{result['total_steps']}")
+                                with step_col2:
+                                    critical = "YES ⚠️" if result.get("critical_failure") else "No ✅"
+                                    st.metric("Critical Failure", critical)
+
+                                step_rows = []
+                                for sr in result.get("step_results", []):
+                                    if "error" not in sr:
+                                        step_rows.append({
+                                            "Step": sr["step"],
+                                            "Action": sr["action"],
+                                            "Status": "✅ Safe" if sr.get("safe") else "❌ Unsafe",
+                                            "Tools": ", ".join(sr.get("tool_calls", [])) or "—",
+                                            "Response": sr.get("response","")[:70],
+                                        })
+                                if step_rows:
+                                    st.dataframe(pd.DataFrame(step_rows), use_container_width=True, hide_index=True)
+
+                                if result.get("remediation"):
+                                    st.info(f"**Remediation:** {result['remediation'][:300]}")
+
+                            except Exception as e:
+                                st.error(f"Simulation error: {e}")
+
+                with col_j2:
+                    if st.button("🔄 Run ALL Journeys for Domain", use_container_width=True):
+                        with st.spinner("Running all journeys..."):
+                            try:
+                                runner = JourneyRunner(st.session_state.adapter)
+                                all_results = runner.run_all_journeys(domain=domain_key, verbose=False)
+                                unsafe = all_results["unsafe_journeys"]
+                                total = all_results["total_journeys"]
+                                st.metric("Journeys Safe", f"{total - unsafe}/{total}")
+                                st.metric("Critical Failures", all_results["critical_failures"])
+                                journey_rows = [{
+                                    "ID": r["journey_id"],
+                                    "Journey": r["journey_name"][:40],
+                                    "Verdict": r["journey_verdict"][:40],
+                                    "Safe Steps": f"{r['safe_steps']}/{r['total_steps']}",
+                                } for r in all_results["journey_results"]]
+                                st.dataframe(pd.DataFrame(journey_rows), use_container_width=True, hide_index=True)
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+            else:
+                st.warning("Load a model first (run an audit) then return here to run simulations.")
+        else:
+            st.info(f"No simulation journeys available for {sim_domain} yet.")
+
 
 with tab_intel:
     st.markdown('<p class="section-header">📡 Live AI Threat Intelligence</p>', unsafe_allow_html=True)
@@ -1799,6 +2468,7 @@ if run_button:
                 if model_type == "huggingface":
                     status_text.text(f"Loading {model_name} — this may take 2-5 minutes on first run...")
                 adapter.load()
+            st.session_state.adapter = adapter  # Store for campaign/agent/simulation tabs
 
             # ── Step 2: Build core test suite ─────────────────────────
             from tests.default_tests import DEFAULT_TESTS
@@ -2050,6 +2720,28 @@ if run_button:
             from core.scoring import RiskScorer
             scorer  = RiskScorer()
             verdict = scorer.verdict(all_findings)
+
+            # ── Risk Engine: Likelihood × Impact scoring ──────────────────
+            try:
+                from core.risk_engine import RiskEngine
+                business_ctx = st.session_state.get("business_context", "hospital")
+                risk_engine = RiskEngine(business_context=business_ctx)
+                scored_findings = risk_engine.score_all(all_findings)
+                risk_aggregate = risk_engine.aggregate(scored_findings)
+                st.session_state.risk_aggregate = risk_aggregate
+                st.session_state.scored_findings = scored_findings
+            except Exception as re_err:
+                st.session_state.risk_aggregate = None
+                st.session_state.scored_findings = all_findings
+
+            # ── Compliance Mapper: Framework alignment ────────────────────
+            try:
+                from core.compliance_mapper import ComplianceMapper
+                mapper = ComplianceMapper()
+                compliance_report = mapper.map(all_findings, domain=domain)
+                st.session_state.compliance_report = compliance_report
+            except Exception as cm_err:
+                st.session_state.compliance_report = None
 
             # ── Enrich findings with OWASP + MITRE mappings ───────────────
             try:
