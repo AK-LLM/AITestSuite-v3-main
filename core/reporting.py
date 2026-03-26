@@ -27,7 +27,7 @@ import os
 import time
 
 try:
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import A4, letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.lib import colors
@@ -93,7 +93,7 @@ class ReportGenerator:
 
         doc = SimpleDocTemplate(
             filename,
-            pagesize=A4,
+            pagesize=letter,
             rightMargin=2*cm, leftMargin=2*cm,
             topMargin=2*cm,   bottomMargin=2*cm
         )
@@ -155,6 +155,11 @@ class ReportGenerator:
             "cell": ParagraphStyle("RptCell",
                 parent=base["Normal"], fontSize=8,
                 textColor=colors.HexColor("#333333"), leading=11),
+
+            "body_small": ParagraphStyle("RptBodySmall",
+                parent=base["Normal"], fontSize=7.5,
+                textColor=colors.HexColor("#333333"), leading=10,
+                wordWrap="LTR", splitLongWords=True),
         }
 
     # ── REPORT SECTIONS ──────────────────────────────────────────────────
@@ -257,24 +262,28 @@ class ReportGenerator:
         story.append(Paragraph("Risk Matrix Summary", styles["section"]))
 
         # Table headers
-        headers = ["#", "Test Name", "Category", "Sev", "Like", "Imp", "Reg", "Overall", "Result"]
+        headers = ["#", "Test Name", "Category", "Sev", "Like", "Imp", "Reg", "Score", "Result"]
+        # cell style for wrapping
+        cs = styles["body_small"]
         data = [headers]
 
         for i, f in enumerate(findings):
             rm = f.get("risk_matrix", {})
             data.append([
-                str(i + 1),
-                f.get("name", "")[:32],
-                f.get("category", "")[:20],
-                str(rm.get("severity",   "-")),
-                str(rm.get("likelihood", "-")),
-                str(rm.get("impact",     "-")),
-                str(rm.get("regulatory", "-")),
-                str(rm.get("overall",    "-")),
-                "PASS" if f.get("passed") else "FAIL"
+                Paragraph(str(i + 1), cs),
+                Paragraph(f.get("name", "")[:60], cs),
+                Paragraph(f.get("category", "")[:35], cs),
+                Paragraph(str(rm.get("severity",   "-")), cs),
+                Paragraph(str(rm.get("likelihood", "-")), cs),
+                Paragraph(str(rm.get("impact",     "-")), cs),
+                Paragraph(str(rm.get("regulatory", "-")), cs),
+                Paragraph(str(rm.get("overall",    "-")), cs),
+                Paragraph("PASS" if f.get("passed") else "FAIL", cs),
             ])
 
-        t = Table(data, colWidths=[0.6*cm, 4.2*cm, 2.8*cm, 1.1*cm, 1.1*cm, 1.1*cm, 1.1*cm, 1.5*cm, 1.5*cm])
+        # letter page: 21.59cm - 4cm margins = 17.59cm usable
+        t = Table(data, colWidths=[0.6*cm, 4.8*cm, 3.2*cm, 1.0*cm, 1.0*cm, 1.0*cm, 1.0*cm, 1.5*cm, 1.5*cm],
+                  repeatRows=1)
 
         ts = [
             ("FONTNAME",       (0,0),  (-1,0),  "Helvetica-Bold"),
@@ -333,30 +342,34 @@ class ReportGenerator:
             story.append(hdr)
 
             # ── Finding detail table ──────────────────────────────────────
+            # All value cells wrapped in Paragraph so ReportLab word-wraps
+            def _p(text):
+                return Paragraph(str(text), styles["body_small"])
+
             detail = [
-                ["Category",    f.get("category", "")],
-                ["Domain",      f.get("domain", "general").upper()],
-                ["Timestamp",   f.get("timestamp", "")],
-                ["Severity",    f"{rm.get('severity','-')}/5 | Likelihood: {rm.get('likelihood','-')}/5 | Impact: {rm.get('impact','-')}/5 | Regulatory: {rm.get('regulatory','-')}/5"],
-                ["Prompt Sent", f.get("prompt", "")[:300]],
-                ["Response",    f.get("response", "")[:300]],
-                ["Expected",    f.get("expected", "N/A")[:200]],
+                ["Category",    _p(f.get("category", ""))],
+                ["Domain",      _p(f.get("domain", "general").upper())],
+                ["Timestamp",   _p(f.get("timestamp", ""))],
+                ["Severity",    _p(f"{rm.get('severity','-')}/5 | Likelihood: {rm.get('likelihood','-')}/5 | Impact: {rm.get('impact','-')}/5 | Regulatory: {rm.get('regulatory','-')}/5")],
+                ["Prompt Sent", _p(f.get("prompt", "")[:600])],
+                ["Response",    _p(f.get("response", "")[:600])],
+                ["Expected",    _p(f.get("expected", "N/A")[:300])],
             ]
 
             # Only add rows that have content
             if f.get("healthcare_implication") and f.get("healthcare_implication") != "N/A":
-                detail.append(["Clinical Risk", f.get("healthcare_implication", "")])
+                detail.append(["Clinical Risk", _p(f.get("healthcare_implication", ""))])
 
             if f.get("regulations"):
-                detail.append(["Regulations", " | ".join(f.get("regulations", []))])
+                detail.append(["Regulations", _p(" | ".join(f.get("regulations", [])))])
 
             if f.get("remediation"):
-                detail.append(["Remediation", f.get("remediation", "")])
+                detail.append(["Remediation", _p(f.get("remediation", ""))])
 
             if f.get("references"):
-                detail.append(["References", " | ".join(f.get("references", []))])
+                detail.append(["References", _p(" | ".join(f.get("references", [])))])
 
-            dt = Table(detail, colWidths=[3.5*cm, 12.5*cm])
+            dt = Table(detail, colWidths=[3.5*cm, 13.0*cm])
             dt.setStyle(TableStyle([
                 ("FONTNAME",       (0,0),  (0,-1),  "Helvetica-Bold"),
                 ("FONTSIZE",       (0,0),  (-1,-1), 8),
@@ -364,9 +377,8 @@ class ReportGenerator:
                 ("BACKGROUND",     (0,0),  (0,-1),  COLOUR_LIGHT),
                 ("ROWBACKGROUNDS", (0,0),  (-1,-1), [colors.white, colors.HexColor("#fafafa")]),
                 ("GRID",           (0,0),  (-1,-1), 0.5, colors.HexColor("#dddddd")),
-                ("PADDING",        (0,0),  (-1,-1), 5),
+                ("PADDING",        (0,0),  (-1,-1), 6),
                 ("VALIGN",         (0,0),  (-1,-1), "TOP"),
-                ("FONTSIZE",       (1,4),  (1,6),   7.5),   # Slightly smaller for prompt/response
             ]))
             story.append(dt)
             story.append(Spacer(1, 0.3*cm))

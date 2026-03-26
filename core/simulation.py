@@ -567,7 +567,13 @@ class JourneyRunner:
             # Simulate tool calls
             tool_call_results = {}
             for tool in step.get("tool_calls", []):
-                tool_call_results[tool] = f"[{tool} result: simulated data]"
+                try:
+                    from core.ehr_simulator import EHRSimulator
+                    _sim = EHRSimulator()
+                    _ctx = {"patient_id": context.metadata.get("patient_id","4421")} if hasattr(context,"metadata") else {}
+                    tool_call_results[tool] = _sim.get_tool_response(tool, _ctx)
+                except Exception:
+                    tool_call_results[tool] = f"[{tool} result: simulated data]"
 
             if tool_call_results:
                 full_prompt += f"\n\nAvailable tool results: {tool_call_results}"

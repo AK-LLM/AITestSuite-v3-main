@@ -280,9 +280,27 @@ try:
     )
     from core.audit_session import AuditSession, SessionReplayer
     from core.decision_engine import DecisionEngine
+    # EHR/EMR Integration — v3.2
+    from core.clinical_terminology import (
+        LOINC_CODES, SNOMED_CONCEPTS, ICD10_CA, CANADIAN_DINS,
+        DRUG_INTERACTIONS, is_valid_loinc, is_valid_din,
+    )
+    from core.ehr_simulator import EHRSimulator
+    from core.fhir_client import FHIRClient
+    from core.ehr_adapter import get_adapter, list_adapters
+    from core.cds_hooks import CDSHooksService, CDS_SERVICES
+    from core.smart_auth import WELL_KNOWN_ENDPOINTS, get_setup_instructions
+    from core.ehr_realism import (
+        get_longitudinal_data, get_conflicting_scenarios,
+        validate_medication_write, validate_lab_write,
+        check_cross_patient_boundary, check_scope_violation,
+        LONGITUDINAL_OBSERVATIONS, CONFLICTING_SCENARIOS,
+    )
+    EHR_MODULES_AVAILABLE = True
     ADVANCED_MODULES_AVAILABLE = True
 except Exception as _adv_err:
     ADVANCED_MODULES_AVAILABLE = False
+    EHR_MODULES_AVAILABLE = False
 
 # ════════════════════════════════════════════════════════════════════════
 # SIDEBAR — AUDIT CONFIGURATION
@@ -579,7 +597,7 @@ with st.sidebar:
 # MAIN CONTENT — FOUR TABS
 # ════════════════════════════════════════════════════════════════════════
 
-tab_dashboard, tab_results, tab_risk, tab_compliance, tab_decision, tab_campaigns, tab_adversarial, tab_autonomous, tab_simulation, tab_replay, tab_intel, tab_blackbox, tab_multimodel, tab_monitor, tab_about = st.tabs([
+tab_dashboard, tab_results, tab_risk, tab_compliance, tab_decision, tab_campaigns, tab_adversarial, tab_autonomous, tab_simulation, tab_replay, tab_ehr, tab_intel, tab_blackbox, tab_multimodel, tab_monitor, tab_about = st.tabs([
     "📊  Dashboard",
     "🔬  Audit Results",
     "⚡  Risk Engine",
@@ -590,6 +608,7 @@ tab_dashboard, tab_results, tab_risk, tab_compliance, tab_decision, tab_campaign
     "🧠  Autonomous",
     "🧭  Simulation",
     "🔁  Replay",
+    "🏥  EHR/EMR",
     "📡  Threat Intel",
     "🕵️  Black Box",
     "🔀  Multi-Model",
@@ -1826,6 +1845,213 @@ Any modification to the log is detectable. Suitable for regulatory submissions.
             st.info("No sessions directory yet. Run an audit to create replayable sessions.")
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# TAB: EHR/EMR — Terminology + FHIR + CDS Hooks + EHR Adapters
+# ═══════════════════════════════════════════════════════════════════════
+
+with tab_ehr:
+    st.markdown('<p class="section-header">🏥 EHR/EMR Integration — Terminology, FHIR, CDS Hooks</p>', unsafe_allow_html=True)
+
+    if not EHR_MODULES_AVAILABLE:
+        st.warning("EHR modules not available. Check installation.")
+    else:
+        ehr_subtab = st.radio(
+            "EHR Section",
+            ["🔬 Terminology Reference","🏥 EHR Simulator","⚡ CDS Hooks","🔗 FHIR Client","🔧 Adapter Setup"],
+            horizontal=True
+        )
+
+        # ── TERMINOLOGY REFERENCE ─────────────────────────────────
+        if ehr_subtab == "🔬 Terminology Reference":
+            st.markdown("### Clinical Terminology Reference — Canadian Standards")
+            term_type = st.selectbox("Standard", ["LOINC","SNOMED CT","ICD-10-CA","Canadian DIN","Drug Interactions","UCUM Units"])
+
+            import pandas as pd
+            if term_type == "LOINC":
+                rows = [{"LOINC": k, "Name": v["name"], "Type": v["type"],
+                          "Canadian Unit": v["unit"], "Panel": v["panel"]}
+                        for k,v in list(LOINC_CODES.items())[:40]
+                        if not k.startswith("_FAKE")]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.caption("Real LOINC codes used in Canadian EHR systems. Full database at loinc.org")
+
+            elif term_type == "SNOMED CT":
+                rows = [{"SNOMED": k, "Term": v["term"], "Hierarchy": v["hierarchy"]}
+                        for k,v in list(SNOMED_CONCEPTS.items())[:30]]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.caption("SNOMED CT concepts — Canadian mandate via Canada Health Infoway")
+
+            elif term_type == "ICD-10-CA":
+                rows = [{"Code": k, "Description": v}
+                        for k,v in list(ICD10_CA.items())[:30]
+                        if not v.startswith("FAKE")]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.caption("ICD-10-CA (CIHI) — differs from US ICD-10-CM. Required for Canadian hospital billing.")
+
+            elif term_type == "Canadian DIN":
+                rows = [{"DIN": k, "Brand": v["brand"], "Generic": v["generic"],
+                          "Strength": v["strength"], "Form": v["form"]}
+                        for k,v in list(CANADIAN_DINS.items())
+                        if v["brand"] != "FAKE"]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.caption("Health Canada Drug Identification Numbers — verify at health-products.canada.ca")
+
+            elif term_type == "Drug Interactions":
+                rows = [{"Drug 1": k[0].title(), "Drug 2": k[1].title(),
+                          "Severity": v["severity"],
+                          "Mechanism": v["mechanism"][:60],
+                          "Action": v["action"][:60]}
+                        for k,v in DRUG_INTERACTIONS.items()]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.caption("Canadian clinical drug interactions including critical pairs")
+
+            else:  # UCUM
+                st.markdown("""
+**Dangerous unit confusions in Canadian clinical AI:**
+
+| Error | Factor | Example |
+|-------|--------|---------|
+| mcg vs mg | 1000× | Digoxin 125mcg → 125mg = fatal |
+| mmol/L vs mg/dL | 18× | Glucose: Canadian vs US units |
+| g/L vs g/dL | 10× | Hemoglobin: Canadian vs US |
+| mL vs L | 1000× | IV fluid order errors |
+| U (units) abbreviation | 10× | Insulin U → 0 misread |
+""")
+
+        # ── EHR SIMULATOR ─────────────────────────────────────────
+        elif ehr_subtab == "🏥 EHR Simulator":
+            st.markdown("### EHR Simulator — Realistic FHIR R4 Patient Data")
+            st.info("No API key or network required. Returns real LOINC, SNOMED, ICD-10-CA, and DIN-coded data.")
+
+            adapter = get_adapter("simulator")
+            patient_choice = st.selectbox("Synthetic Patient",
+                ["4421 — Margaret Chen (AF+DM+HTN on warfarin)",
+                 "7743 — James Thunderbird (First Nations, depression+DM)",
+                 "1001 — Priya Patel (Paediatric 5yo asthma)"])
+            pid = patient_choice.split("—")[0].strip()
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("Get Patient", use_container_width=True):
+                    p = adapter.get_patient(pid)
+                    st.json(p)
+            with col2:
+                if st.button("Get Medications", use_container_width=True):
+                    m = adapter.get_medications(pid)
+                    import pandas as pd
+                    if m:
+                        st.dataframe(pd.DataFrame(m), use_container_width=True, hide_index=True)
+            with col3:
+                if st.button("Get Labs (LOINC)", use_container_width=True):
+                    l = adapter.get_labs(pid)
+                    import pandas as pd
+                    if l:
+                        rows = [{"LOINC":o["loinc"],"Test":o["display"],
+                                  "Value":f"{o['value']} {o['unit']}","Flag":o["flag"],"Date":o["date"]}
+                                for o in l]
+                        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+            st.markdown("#### Drug Interaction Check")
+            d1, d2 = st.columns(2)
+            with d1:
+                drug1 = st.selectbox("Drug 1", ["warfarin","metformin","lisinopril","metoprolol","escitalopram"])
+            with d2:
+                drug2 = st.selectbox("Drug 2", ["fluconazole","ibuprofen","amoxicillin","contrast_dye","tramadol"])
+            if st.button("Check Interaction", use_container_width=True):
+                result = adapter.check_drug_interaction(drug1, drug2)
+                severity = result.get("severity","NONE")
+                color = {"CRITICAL":"#dc3545","HIGH":"#fd7e14","MEDIUM":"#ffc107","NONE":"#1E7145"}.get(severity,"#333")
+                st.markdown(f"""
+<div style="background:{color};color:white;padding:10px;border-radius:8px;font-weight:bold;">
+{severity} — {result.get("mechanism","No interaction found")}
+</div>""", unsafe_allow_html=True)
+                if result.get("action"):
+                    st.info(f"**Action:** {result['action']}")
+
+        # ── CDS HOOKS ─────────────────────────────────────────────
+        elif ehr_subtab == "⚡ CDS Hooks":
+            st.markdown("### CDS Hooks Services")
+            st.markdown("CDS Hooks is the standard for triggering AI at clinical decision moments inside Epic and Cerner.")
+
+            import pandas as pd
+            svc_rows = [{"ID": s["id"], "Hook": s["hook"],
+                          "Title": s["title"], "Description": s["description"][:80]}
+                        for s in CDS_SERVICES]
+            st.dataframe(pd.DataFrame(svc_rows), use_container_width=True, hide_index=True)
+
+            st.markdown("#### Simulate a CDS Hook")
+            svc_choice = st.selectbox("Service", [s["id"] for s in CDS_SERVICES])
+            pid_cds = st.selectbox("Patient", ["4421","7743","1001"], key="cds_pid")
+
+            if st.button("▶ Simulate Hook", use_container_width=True):
+                cds = CDSHooksService()
+                result = cds.simulate_hook(svc_choice, pid_cds)
+                cards = result.get("cards",[])
+                st.metric("Cards returned", len(cards))
+                for card in cards:
+                    indicator = card.get("indicator","info")
+                    color = {"critical":"#dc3545","warning":"#fd7e14","info":"#2E75B6"}.get(indicator,"#333")
+                    st.markdown(f"""
+<div style="border-left:4px solid {color};padding:10px;margin:8px 0;background:#1a1a2e;">
+<strong>{card.get("summary","")}</strong><br>
+<small>{card.get("detail","")[:200]}</small>
+</div>""", unsafe_allow_html=True)
+
+        # ── FHIR CLIENT ───────────────────────────────────────────
+        elif ehr_subtab == "🔗 FHIR Client":
+            st.markdown("### FHIR R4 Client")
+            client = FHIRClient()
+            info = client.get_connection_info()
+
+            mode_color = "#1E7145" if info["mode"]=="real" else "#2E75B6"
+            st.markdown(f"""
+<div style="background:{mode_color};color:white;padding:10px;border-radius:8px;">
+Mode: <strong>{info["mode"].upper()}</strong> | System: {info["ehr_system"]} | 
+Endpoint: {info["base_url"] or "EHR Simulator"}
+</div>""", unsafe_allow_html=True)
+
+            st.markdown("#### Capability Statement")
+            if st.button("GET /metadata", use_container_width=True):
+                cap = client.capability_statement()
+                st.json(cap)
+
+            st.markdown("#### LOINC Validation")
+            loinc_input = st.text_input("Enter LOINC code to validate", "2160-0")
+            if st.button("Validate LOINC", use_container_width=True):
+                valid = is_valid_loinc(loinc_input)
+                info_loinc = LOINC_CODES.get(loinc_input,{})
+                if valid:
+                    st.success(f"✅ Valid: {info_loinc.get('name')} | Unit: {info_loinc.get('unit')}")
+                else:
+                    st.error(f"❌ Invalid LOINC code — verify at loinc.org")
+
+        # ── ADAPTER SETUP ─────────────────────────────────────────
+        else:
+            st.markdown("### EHR Adapter Setup Guide")
+            import pandas as pd
+            adapter_rows = [{"System": a["name"], "Canadian Org": a["canadian_org"],
+                              "Requires": a["requires"]}
+                            for a in list_adapters()]
+            st.dataframe(pd.DataFrame(adapter_rows), use_container_width=True, hide_index=True)
+
+            system_choice = st.selectbox("Get setup instructions for:", ["epic","cerner","oscar"])
+            from core.smart_auth import get_setup_instructions
+            if st.button("Show Setup Instructions", use_container_width=True):
+                instructions = get_setup_instructions(system_choice)
+                st.code(instructions, language="bash")
+
+            st.markdown("#### Current Environment Variables")
+            import os
+            env_rows = [
+                {"Variable": "FHIR_BASE_URL",    "Value": os.getenv("FHIR_BASE_URL","NOT SET")},
+                {"Variable": "FHIR_CLIENT_ID",   "Value": os.getenv("FHIR_CLIENT_ID","NOT SET")},
+                {"Variable": "EHR_SYSTEM",        "Value": os.getenv("EHR_SYSTEM","simulator")},
+                {"Variable": "FHIR_SCOPE",        "Value": os.getenv("FHIR_SCOPE","NOT SET")},
+            ]
+            st.dataframe(pd.DataFrame(env_rows), use_container_width=True, hide_index=True)
+            st.caption("Set these environment variables to connect to a real EHR. Leave unset to use the EHR Simulator.")
+
+
 with tab_intel:
     st.markdown('<p class="section-header">📡 Live AI Threat Intelligence</p>', unsafe_allow_html=True)
     st.caption("Pulls latest AI security research from arXiv. Refresh generates NEW test cases from each paper automatically.")
@@ -2884,7 +3110,20 @@ if run_button:
                 test_suite += SOCIAL_ENGINEERING_TESTS
                 from tests.garak_probes import GARAK_PROBES
                 test_suite += GARAK_PROBES
-                status_text.text(f"All 22 specialist modules + Garak probes loaded")
+                # EHR/EMR Integration Tests — v3.2
+                try:
+                    from tests.module_v_clinical_terminology import CLINICAL_TERMINOLOGY_TESTS
+                    from tests.module_w_fhir_injection import FHIR_INJECTION_TESTS
+                    from tests.module_x_formulary import FORMULARY_TESTS
+                    test_suite += CLINICAL_TERMINOLOGY_TESTS
+                    test_suite += FHIR_INJECTION_TESTS
+                    test_suite += FORMULARY_TESTS
+                    from tests.module_y_ehr_realism import EHR_REALISM_TESTS
+                    test_suite += EHR_REALISM_TESTS
+                    status_text.text(f"EHR/EMR: {len(CLINICAL_TERMINOLOGY_TESTS)+len(FHIR_INJECTION_TESTS)+len(FORMULARY_TESTS)} terminology, FHIR, and formulary tests loaded")
+                except Exception as _ehr_load:
+                    pass
+                status_text.text(f"All modules + Garak probes + EHR/EMR loaded")
                 if include_multilingual:
                     from tests.multilingual_tests import MULTILINGUAL_TESTS
                     test_suite += MULTILINGUAL_TESTS
