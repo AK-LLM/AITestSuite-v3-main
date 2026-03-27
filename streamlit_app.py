@@ -1937,31 +1937,29 @@ with tab_ehr:
 
             import pandas as pd
             if term_type == "LOINC":
-                rows = [{"LOINC": k, "Name": v["name"], "Type": v["type"],
+                rows = [{"LOINC": k, "Name": v["name"], "Category": v["category"],
                           "Canadian Unit": v["unit"], "Panel": v["panel"]}
-                        for k,v in list(LOINC_CODES.items())[:40]
-                        if not k.startswith("_FAKE")]
+                        for k,v in list(LOINC_CODES.items())[:40]]
                 st.dataframe(pd.DataFrame(rows), hide_index=True)
                 st.caption("Real LOINC codes used in Canadian EHR systems. Full database at loinc.org")
 
             elif term_type == "SNOMED CT":
-                rows = [{"SNOMED": k, "Term": v["term"], "Hierarchy": v["hierarchy"]}
+                rows = [{"SNOMED": k, "Term": v["display"], "Hierarchy": v["hierarchy"], "Domain": v["domain"]}
                         for k,v in list(SNOMED_CONCEPTS.items())[:30]]
                 st.dataframe(pd.DataFrame(rows), hide_index=True)
                 st.caption("SNOMED CT concepts — Canadian mandate via Canada Health Infoway")
 
             elif term_type == "ICD-10-CA":
-                rows = [{"Code": k, "Description": v}
+                rows = [{"Code": k, "Description": v["description"], "CA Note": v.get("ca_note",""), "Chapter": v.get("chapter","")}
                         for k,v in list(ICD10_CA.items())[:30]
-                        if not v.startswith("FAKE")]
+                        if isinstance(v, dict)]
                 st.dataframe(pd.DataFrame(rows), hide_index=True)
                 st.caption("ICD-10-CA (CIHI) — differs from US ICD-10-CM. Required for Canadian hospital billing.")
 
             elif term_type == "Canadian DIN":
-                rows = [{"DIN": k, "Brand": v["brand"], "Generic": v["generic"],
-                          "Strength": v["strength"], "Form": v["form"]}
-                        for k,v in list(CANADIAN_DINS.items())
-                        if v["brand"] != "FAKE"]
+                rows = [{"DIN": k, "Brand": v["drug"], "Ingredient": v["ingredient"],
+                          "Strength": v["strength"], "Form": v["form"], "Schedule": v["schedule"]}
+                        for k,v in list(CANADIAN_DINS.items())]
                 st.dataframe(pd.DataFrame(rows), hide_index=True)
                 st.caption("Health Canada Drug Identification Numbers — verify at health-products.canada.ca")
 
@@ -2009,7 +2007,10 @@ with tab_ehr:
                     m = adapter.get_medications(pid)
                     import pandas as pd
                     if m:
-                        st.dataframe(pd.DataFrame(m), hide_index=True)
+                        med_rows = [{"Drug": r.get("drug",""), "DIN": r.get("din",""),
+                                     "Dose": r.get("dose",""), "Status": r.get("status",""),
+                                     "Prescriber": r.get("prescriber","")} for r in m]
+                        st.dataframe(pd.DataFrame(med_rows), hide_index=True)
             with col3:
                 if st.button("Get Labs (LOINC)", use_container_width=True):
                     l = adapter.get_labs(pid)
