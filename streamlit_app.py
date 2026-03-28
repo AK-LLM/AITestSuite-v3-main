@@ -296,6 +296,11 @@ def _load_advanced_modules():
             validate_medication_write, validate_lab_write,
             check_cross_patient_boundary, check_scope_violation,
             LONGITUDINAL_OBSERVATIONS, CONFLICTING_SCENARIOS)
+        from core.ground_truth import GroundTruthEvaluator, GROUND_TRUTH_PAIRS, get_ground_truth_pairs
+        from core.metrics import wilson_ci, compute_all_metrics, attack_success_rate, false_positive_rate
+        from core.drift_detector import DriftDetector, DRIFT_SCENARIOS
+        from core.tool_evaluator import ToolEvaluator, TOOL_USE_SCENARIOS, TOOL_REGISTRY
+        from core.traceability import TraceabilityMapper, REGULATION_CATALOGUE, TRACEABILITY_MATRIX
         result.update({
             "ok": True,
             "RiskEngine": RiskEngine, "ComplianceMapper": ComplianceMapper,
@@ -325,6 +330,21 @@ def _load_advanced_modules():
             "check_scope_violation": check_scope_violation,
             "LONGITUDINAL_OBSERVATIONS": LONGITUDINAL_OBSERVATIONS,
             "CONFLICTING_SCENARIOS": CONFLICTING_SCENARIOS,
+            "GroundTruthEvaluator": GroundTruthEvaluator,
+            "GROUND_TRUTH_PAIRS":   GROUND_TRUTH_PAIRS,
+            "get_ground_truth_pairs": get_ground_truth_pairs,
+            "wilson_ci":            wilson_ci,
+            "compute_all_metrics":  compute_all_metrics,
+            "attack_success_rate":  attack_success_rate,
+            "false_positive_rate":  false_positive_rate,
+            "DriftDetector":        DriftDetector,
+            "DRIFT_SCENARIOS":      DRIFT_SCENARIOS,
+            "ToolEvaluator":        ToolEvaluator,
+            "TOOL_USE_SCENARIOS":   TOOL_USE_SCENARIOS,
+            "TOOL_REGISTRY":        TOOL_REGISTRY,
+            "TraceabilityMapper":   TraceabilityMapper,
+            "REGULATION_CATALOGUE": REGULATION_CATALOGUE,
+            "TRACEABILITY_MATRIX":  TRACEABILITY_MATRIX,
         })
     except Exception as _e:
         result["error"] = str(_e)
@@ -375,6 +395,21 @@ if ADVANCED_MODULES_AVAILABLE:
     check_scope_violation   = _adv["check_scope_violation"]
     LONGITUDINAL_OBSERVATIONS = _adv["LONGITUDINAL_OBSERVATIONS"]
     CONFLICTING_SCENARIOS   = _adv["CONFLICTING_SCENARIOS"]
+    GroundTruthEvaluator    = _adv["GroundTruthEvaluator"]
+    GROUND_TRUTH_PAIRS      = _adv["GROUND_TRUTH_PAIRS"]
+    get_ground_truth_pairs  = _adv["get_ground_truth_pairs"]
+    wilson_ci               = _adv["wilson_ci"]
+    compute_all_metrics     = _adv["compute_all_metrics"]
+    attack_success_rate     = _adv["attack_success_rate"]
+    false_positive_rate     = _adv["false_positive_rate"]
+    DriftDetector           = _adv["DriftDetector"]
+    DRIFT_SCENARIOS         = _adv["DRIFT_SCENARIOS"]
+    ToolEvaluator           = _adv["ToolEvaluator"]
+    TOOL_USE_SCENARIOS      = _adv["TOOL_USE_SCENARIOS"]
+    TOOL_REGISTRY           = _adv["TOOL_REGISTRY"]
+    TraceabilityMapper      = _adv["TraceabilityMapper"]
+    REGULATION_CATALOGUE    = _adv["REGULATION_CATALOGUE"]
+    TRACEABILITY_MATRIX     = _adv["TRACEABILITY_MATRIX"]
 
 # ════════════════════════════════════════════════════════════════════════
 # SIDEBAR — AUDIT CONFIGURATION
@@ -1624,6 +1659,89 @@ tool calls, and multi-step clinical or business processes.
 # ═══════════════════════════════════════════════════════════════════════
 # TAB: DECISION ENGINE — Go/No-Go + Business Impact
 # ═══════════════════════════════════════════════════════════════════════
+
+
+# ── v3.3 TRACEABILITY & ANALYTICS (inline, after compliance) ───────────
+    if ADVANCED_MODULES_AVAILABLE:
+        st.markdown("---")
+        st.markdown("### v3.3 Regulatory Traceability Matrix")
+        st.caption("Bidirectional test → regulation mapping. Addresses: 'No traceability mapping' from technical review.")
+
+        trace_subtab = st.radio("Traceability View",
+            ["Coverage Summary","Regulation → Tests","Tests → Regulations","Coverage Gaps"],
+            horizontal=True, key="trace_view")
+
+        mapper = TraceabilityMapper()
+        import pandas as pd
+
+        if trace_subtab == "Coverage Summary":
+            report = mapper.audit_report()
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: st.metric("Total Regulations", report["total_regulations"])
+            with c2: st.metric("Covered", report["covered"], delta=f"+{report['covered']} vs 0 in v3.2")
+            with c3: st.metric("Gaps", report["gaps"])
+            with c4: st.metric("Coverage Rate", f"{report['coverage_rate']*100:.0f}%")
+            st.info(report["audit_statement"])
+            by_dom = report["by_domain"]
+            dom_rows = [{"Domain":d,"Total":v["total"],"Covered":v["covered"],
+                         "Rate":f"{v['covered']/v['total']*100:.0f}%" if v["total"]>0 else "0%"}
+                        for d,v in by_dom.items()]
+            st.dataframe(pd.DataFrame(dom_rows).sort_values("Total",ascending=False), hide_index=True)
+
+        elif trace_subtab == "Regulation → Tests":
+            reg_keys = sorted(REGULATION_CATALOGUE.keys())
+            sel_reg = st.selectbox("Select Regulation", reg_keys, key="trace_reg_sel")
+            if sel_reg:
+                data = mapper.tests_for_regulation(sel_reg)
+                st.markdown(f"**{data['full_name']}**")
+                st.write(f"Domain: {data['domain']} | Jurisdiction: {data['jurisdiction']}")
+                if data["covered_by"]:
+                    for mod in data["covered_by"]:
+                        mod_data = TRACEABILITY_MATRIX.get(mod,{})
+                        st.write(f"- `{mod}` — {mod_data.get('test_count',0)} tests — {mod_data.get('primary_coverage','')[:60]}")
+                    st.success(f"✅ {data['n_tests']} tests across {data['n_modules']} modules")
+                else:
+                    st.error("No test coverage for this regulation")
+
+        elif trace_subtab == "Tests → Regulations":
+            mod_keys = sorted(TRACEABILITY_MATRIX.keys())
+            sel_mod = st.selectbox("Select Test Module", mod_keys, key="trace_mod_sel")
+            if sel_mod:
+                data = mapper.regulations_for_module(sel_mod)
+                st.write(f"**{sel_mod}** — {data['test_count']} tests")
+                st.caption(data["coverage"])
+                reg_rows = [{"Regulation ID": r,
+                             "Full Name": REGULATION_CATALOGUE.get(r,{}).get("full",r)[:70],
+                             "Domain": REGULATION_CATALOGUE.get(r,{}).get("domain",""),
+                             "Jurisdiction": REGULATION_CATALOGUE.get(r,{}).get("jurisdiction","")}
+                            for r in data["regulations"]]
+                st.dataframe(pd.DataFrame(reg_rows), hide_index=True)
+
+        elif trace_subtab == "Coverage Gaps":
+            gaps = mapper.coverage_gaps()
+            if gaps:
+                st.warning(f"{len(gaps)} regulations with no test coverage")
+                st.dataframe(pd.DataFrame(gaps), hide_index=True)
+            else:
+                st.success("All regulations have at least one test module")
+
+        # v3.3 Quantitative Metrics
+        st.markdown("---")
+        st.markdown("### v3.3 Quantitative Metrics")
+        st.caption("Wilson CI, ASR, FPR — addresses: 'no uncertainty modeling, no quantified success metrics'")
+        if "audit_findings" in st.session_state and st.session_state.audit_findings:
+            findings = st.session_state.audit_findings
+            metrics  = compute_all_metrics(findings)
+            scorer   = RiskScorer() if "RiskScorer" in dir() else None
+            c1,c2,c3,c4 = st.columns(4)
+            with c1: st.metric("Pass Rate", f"{metrics['pass_rate_pct']}%")
+            with c2: st.metric("95% CI", f"{metrics['overall_ci_95']['lower']*100:.1f}–{metrics['overall_ci_95']['upper']*100:.1f}%")
+            with c3: st.metric("ASR", f"{metrics['asr']['asr_pct']}%", help="Attack Success Rate — % adversarial prompts that bypassed safety")
+            with c4: st.metric("FPR", f"{metrics['fpr']['fpr_pct']}%", help="False Positive Rate — % benign prompts incorrectly flagged")
+            st.caption(metrics["summary"])
+        else:
+            st.info("Run an audit first to see quantitative metrics here.")
+
 
 with tab_decision:
     st.markdown('<p class="section-header">🎯 Decision Engine — Go/No-Go + Business Impact</p>', unsafe_allow_html=True)
@@ -3270,6 +3388,8 @@ if run_button:
                     test_suite += FORMULARY_TESTS
                     from tests.module_y_ehr_realism import EHR_REALISM_TESTS
                     test_suite += EHR_REALISM_TESTS
+                    from tests.module_z_reasoning import MODULE_Z_REASONING_TESTS
+                    test_suite += MODULE_Z_REASONING_TESTS
                     status_text.text(f"EHR/EMR: {len(CLINICAL_TERMINOLOGY_TESTS)+len(FHIR_INJECTION_TESTS)+len(FORMULARY_TESTS)} terminology, FHIR, and formulary tests loaded")
                 except Exception as _ehr_load:
                     pass

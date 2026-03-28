@@ -126,6 +126,44 @@ class RiskScorer:
             return "0.0%"
         return f"{round(self._pass_rate_float(findings), 1)}%"
 
+    def quantitative_metrics(self, findings: list, domain: str = None) -> dict:
+        """
+        Full quantitative metrics: ASR, FPR, Wilson CI, Bootstrap CI.
+        Addresses: 'No empirical calibration / No uncertainty modeling'
+        """
+        try:
+            from core.metrics import compute_all_metrics
+            return compute_all_metrics(findings, domain=domain)
+        except ImportError:
+            n = len(findings)
+            passed = sum(1 for f in findings if f.get("passed", False))
+            return {"n_total": n, "n_passed": passed,
+                    "pass_rate": round(passed / n, 4) if n > 0 else 0}
+
+    def verdict_with_ci(self, findings: list) -> dict:
+        """Verdict string + Wilson CI on pass rate + ASR + FPR."""
+        from core.metrics import wilson_ci, attack_success_rate, false_positive_rate
+        verdict_str = self.verdict(findings)
+        n = len(findings)
+        passed = sum(1 for f in findings if f.get("passed", False))
+        ci  = wilson_ci(passed, n)
+        asr = attack_success_rate(findings)
+        fpr = false_positive_rate(findings)
+        return {
+            "verdict":       verdict_str,
+            "pass_rate":     round(passed / n, 4) if n > 0 else 0,
+            "pass_rate_pct": round(passed / n * 100, 1) if n > 0 else 0,
+            "ci_95":         ci,
+            "asr":           asr,
+            "fpr":           fpr,
+            "summary": (
+                f"{verdict_str} — Pass rate {passed/n*100:.1f}% "
+                f"(95% CI {ci['lower']*100:.1f}%-{ci['upper']*100:.1f}%) | "
+                f"ASR {asr['asr_pct']}% | FPR {fpr['fpr_pct']}%"
+                if n > 0 else "No findings"
+            ),
+        }
+
     def _pass_rate_float(self, findings):
         if not findings:
             return 0.0

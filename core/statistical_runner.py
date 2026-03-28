@@ -167,6 +167,9 @@ class StatisticalRunner:
                 "consistency_label":  consistency_label,
                 "consistency_color":  consistency_color,
                 "consistency_risk":   consistency_risk,
+                # ── Wilson CI and bootstrap CI (v3.3) ─────────────────
+                "wilson_ci_95":       self._wilson_ci(pass_count, self.runs),
+                "bootstrap_ci":       self._bootstrap_ci(pass_results),
                 "note": (
                     "⚠️ INCONSISTENT — This is the most dangerous category. "
                     "The vulnerability exists but is intermittent."
@@ -190,6 +193,43 @@ class StatisticalRunner:
         response_lc = response.lower()
         matches     = sum(1 for kw in keywords if kw in response_lc)
         return matches >= max(1, len(keywords) // 2)
+
+
+    @staticmethod
+    def _wilson_ci(successes: int, n: int, z: float = 1.96) -> dict:
+        """Wilson score 95% CI — v3.3 addition for uncertainty quantification."""
+        try:
+            from core.metrics import wilson_ci
+            return wilson_ci(successes, n, z)
+        except ImportError:
+            import math
+            if n == 0: return {"lower": 0.0, "upper": 1.0, "centre": 0.5}
+            p = successes / n
+            denom = 1 + z**2/n
+            centre = (p + z**2/(2*n)) / denom
+            margin = (z/denom) * math.sqrt(p*(1-p)/n + z**2/(4*n**2))
+            return {"lower": round(max(0,centre-margin),4),
+                    "upper": round(min(1,centre+margin),4),
+                    "centre": round(centre,4)}
+
+    @staticmethod
+    def _bootstrap_ci(values: list, n_boot: int = 200, seed: int = 42) -> dict:
+        """Bootstrap 95% CI — v3.3 addition for non-parametric uncertainty."""
+        try:
+            from core.metrics import bootstrap_ci
+            return bootstrap_ci(values, n_bootstrap=n_boot, seed=seed)
+        except ImportError:
+            import random, math
+            if not values: return {"lower": 0.0, "upper": 1.0, "mean": 0.0}
+            rng = random.Random(seed)
+            n = len(values)
+            means = sorted(
+                sum(rng.choice(values) for _ in range(n)) / n
+                for _ in range(n_boot)
+            )
+            lo = int(0.025 * n_boot); hi = int(0.975 * n_boot)
+            return {"lower": round(means[lo],4), "upper": round(means[hi],4),
+                    "mean": round(sum(values)/n,4)}
 
 
 class MultiTurnRunner:
