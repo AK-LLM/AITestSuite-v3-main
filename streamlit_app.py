@@ -3403,6 +3403,8 @@ if run_button:
                 test_suite += FINANCE_TESTS
                 from tests.module_o_finance_deep import FINANCE_DEEP_TESTS
                 test_suite += FINANCE_DEEP_TESTS
+                from tests.module_aa_finance_advanced import FINANCE_ADVANCED_TESTS
+                test_suite += FINANCE_ADVANCED_TESTS
             elif domain in ["legal", "government"]:
                 from domains.government_legal import LEGAL_TESTS, GOVERNMENT_TESTS
                 test_suite += LEGAL_TESTS + GOVERNMENT_TESTS
@@ -3410,7 +3412,9 @@ if run_button:
                 test_suite += LEGAL_GOV_DEEP_TESTS
                 from tests.module_q_authority_impersonation import AUTHORITY_IMPERSONATION_TESTS
                 test_suite += AUTHORITY_IMPERSONATION_TESTS
-
+                from tests.module_ab_legal_govt_advanced import LEGAL_GOVT_ADVANCED_TESTS
+                from tests.module_ab_legal_govt_advanced import LEGAL_GOVT_ADVANCED_TESTS
+                test_suite += LEGAL_GOVT_ADVANCED_TESTS
             # Include shadow prod tests if available (additive on top of domain tests)
             if "shadow_tests" in st.session_state and st.session_state.shadow_tests:
                 test_suite += st.session_state.shadow_tests
