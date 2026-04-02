@@ -25,6 +25,7 @@ DEPENDENCIES:
 
 import os
 import time
+import html as _html   # for escaping user-controlled text before ReportLab parsing
 
 try:
     from reportlab.lib.pagesizes import A4, letter
@@ -267,18 +268,22 @@ class ReportGenerator:
         cs = styles["body_small"]
         data = [headers]
 
+        def _ps(text):
+            """Safe paragraph — escape user text before ReportLab XML parsing."""
+            return Paragraph(_html.escape(str(text)), cs)
+
         for i, f in enumerate(findings):
             rm = f.get("risk_matrix", {})
             data.append([
-                Paragraph(str(i + 1), cs),
-                Paragraph(f.get("name", "")[:60], cs),
-                Paragraph(f.get("category", "")[:35], cs),
-                Paragraph(str(rm.get("severity",   "-")), cs),
-                Paragraph(str(rm.get("likelihood", "-")), cs),
-                Paragraph(str(rm.get("impact",     "-")), cs),
-                Paragraph(str(rm.get("regulatory", "-")), cs),
-                Paragraph(str(rm.get("overall",    "-")), cs),
-                Paragraph("PASS" if f.get("passed") else "FAIL", cs),
+                _ps(i + 1),
+                _ps(f.get("name", "")[:60]),
+                _ps(f.get("category", "")[:35]),
+                _ps(rm.get("severity",   "-")),
+                _ps(rm.get("likelihood", "-")),
+                _ps(rm.get("impact",     "-")),
+                _ps(rm.get("regulatory", "-")),
+                _ps(rm.get("overall",    "-")),
+                _ps("PASS" if f.get("passed") else "FAIL"),
             ])
 
         # letter page: 21.59cm - 4cm margins = 17.59cm usable
@@ -326,7 +331,7 @@ class ReportGenerator:
             passed  = f.get("passed", False)
 
             # ── Finding header bar ────────────────────────────────────────
-            header_text = (
+            header_text = _html.escape(
                 f"Finding {i+1}: {f.get('name', '')}  |  "
                 f"Risk: {overall}/5 ({rm.get('label', '')})  |  "
                 f"{'PASS' if passed else 'FAIL'}"
@@ -342,9 +347,13 @@ class ReportGenerator:
             story.append(hdr)
 
             # ── Finding detail table ──────────────────────────────────────
-            # All value cells wrapped in Paragraph so ReportLab word-wraps
+            # CRITICAL: all user-controlled text MUST be html.escaped before
+            # passing to Paragraph(). ReportLab parses the string as XML —
+            # test prompts intentionally contain XSS payloads like
+            # <img src=x onerror=...> that crash the XML parser otherwise.
             def _p(text):
-                return Paragraph(str(text), styles["body_small"])
+                safe = _html.escape(str(text))
+                return Paragraph(safe, styles["body_small"])
 
             detail = [
                 ["Category",    _p(f.get("category", ""))],
