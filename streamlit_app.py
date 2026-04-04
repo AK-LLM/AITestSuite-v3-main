@@ -426,7 +426,7 @@ with st.sidebar:
     model_type = st.selectbox(
         "Model Provider",
         options=["huggingface", "openai", "anthropic",
-                 "aws_bedrock", "azure_openai", "gcp_vertex", "ollama"],
+                 "aws_bedrock", "azure_openai", "gcp_vertex", "ollama", "local"],
         index=0,
         format_func=lambda x: {
             "huggingface":  "🤗 HuggingFace (FREE — GPU required)",
@@ -435,9 +435,10 @@ with st.sidebar:
             "aws_bedrock":  "🟠 AWS Bedrock",
             "azure_openai": "🔷 Azure OpenAI",
             "gcp_vertex":   "🔴 GCP Vertex AI",
-            "ollama":       "🦙 Ollama (Local)"
+            "ollama":       "🦙 Ollama (Local)",
+            "local":        "💾 Local / USB Drive (GGUF or HuggingFace folder)",
         }[x],
-        help="HuggingFace models are free but require a GPU environment (Colab T4 or local GPU). API providers work from any environment."
+        help="HuggingFace models are free but require a GPU environment (Colab T4 or local GPU). API providers work from any environment. Local/USB works with .gguf files or HuggingFace model folders stored on disk."
     )
 
     model_defaults = {
@@ -447,18 +448,59 @@ with st.sidebar:
         "aws_bedrock":  "amazon.titan-text-express-v1",
         "azure_openai": "gpt-4",
         "gcp_vertex":   "gemini-1.0-pro",
-        "ollama":       "llama2"
+        "ollama":       "llama2",
+        "local":        "/path/to/your/model.gguf",
     }
     model_name = st.text_input(
         "Model Name / ID",
         value=model_defaults.get(model_type, "google/flan-t5-small"),
-        help="HuggingFace: model ID | Cloud: model/deployment name"
+        help="HuggingFace: model ID | Cloud: model/deployment name | Local/USB: full path to .gguf file or model folder"
     )
 
     api_key = None
     # Cloud provider specific credential fields
     if model_type == "huggingface":
         pass  # No key needed
+    elif model_type == "local":
+        st.caption("💾 **Local / USB Model**")
+        st.caption("Accepts GGUF files (.gguf) or HuggingFace model folders.")
+        st.caption("Enter the full path above, e.g.:")
+        with st.expander("📍 Path examples by OS"):
+            st.code("# Mac:\n/Volumes/USB_NAME/models/Llama-3-8B.Q4_K_M.gguf\n\n# Windows:\nE:\\models\\Llama-3-8B.Q4_K_M.gguf\n\n# Linux:\n/media/username/USB_NAME/models/Llama-3-8B.Q4_K_M.gguf\n\n# Local folder (HuggingFace):\n/home/user/models/Mistral-7B-Instruct-v0.2", language="")
+        # USB scanner
+        scan_dir = st.text_input(
+            "📂 Scan directory for models",
+            placeholder="/Volumes/USB or E:\\models",
+            help="Optional: enter a folder path and click Scan to auto-discover all models"
+        )
+        if st.button("🔍 Scan for Models", use_container_width=True):
+            if scan_dir and os.path.isdir(scan_dir):
+                try:
+                    from models.model_adapter import ModelAdapter as _MA
+                    _tmp = _MA.__new__(_MA)
+                    found = _tmp.scan_local_models(scan_dir)
+                    if found:
+                        st.success(f"Found {len(found)} model(s):")
+                        for m in found:
+                            quant_str = f" [{m['quant']}]" if m.get('quant') else ""
+                            st.code(f"{m['name']}{quant_str}  ({m['size_gb']}GB)\n{m['path']}", language="")
+                    else:
+                        st.warning("No GGUF or HuggingFace models found in that directory.")
+                except Exception as e:
+                    st.error(f"Scan error: {e}")
+            else:
+                st.warning("Enter a valid directory path to scan.")
+        if model_name and model_name != "/path/to/your/model.gguf":
+            if not os.path.exists(model_name):
+                st.warning(f"⚠️ Path not found: {model_name}")
+            else:
+                ext = os.path.splitext(model_name)[1].lower()
+                fmt = "GGUF" if ext == ".gguf" else "HuggingFace folder" if os.path.isdir(model_name) else "unknown"
+                size_gb = os.path.getsize(model_name) / 1e9 if os.path.isfile(model_name) else sum(
+                    os.path.getsize(os.path.join(r,f))
+                    for r,_,fs in os.walk(model_name) for f in fs
+                ) / 1e9 if os.path.isdir(model_name) else 0
+                st.success(f"✅ Found: {fmt}, {size_gb:.1f}GB")
     elif model_type == "azure_openai":
         api_key = st.text_input("Azure API Key", type="password")
         azure_endpoint = st.text_input("Azure Endpoint URL",

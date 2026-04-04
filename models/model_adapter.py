@@ -123,6 +123,8 @@ class ModelAdapter:
 
         elif self.model_type == "ollama":
             return self._load_ollama()
+        elif self.model_type in ("local", "gguf", "local_gguf"):
+            return self._load_local()
 
         raise ValueError(
             f"Unsupported model_type: '{self.model_type}'\n"
@@ -148,6 +150,8 @@ class ModelAdapter:
             return self._query_vertex(prompt, max_tokens)
         elif self.model_type == "ollama":
             return self._query_ollama(prompt, max_tokens)
+        elif self.model_type in ("local", "gguf", "local_gguf"):
+            return self._query_local(prompt, max_tokens)
         return "ERROR: Model type not supported"
 
     def info(self):
@@ -441,3 +445,256 @@ class ModelAdapter:
         )
         with urllib.request.urlopen(req, timeout=120) as r:
             return json.loads(r.read())["response"]
+
+    # ════════════════════════════════════════════════════════════════════════
+    # LOCAL MODEL SUPPORT — USB drives, local folders, GGUF files
+    # ════════════════════════════════════════════════════════════════════════
+
+    def _load_local(self):
+        """
+        Load a model from a local path — USB drive, external SSD, or any folder.
+
+        Supports three formats:
+          1. GGUF (llama.cpp)   — single .gguf file, e.g. /media/usb/Llama-3-8B.Q4_K_M.gguf
+          2. HuggingFace folder — folder containing config.json + safetensors/bin weights
+          3. GGUF via Ollama    — model already pulled into Ollama (pass model_name only)
+
+        Usage:
+          # GGUF file on USB (Mac/Linux):
+          model = ModelAdapter('local', '/Volumes/USB/models/Llama-3-8B.Q4_K_M.gguf')
+          # GGUF file on USB (Windows):
+          model = ModelAdapter('local', 'E:/models/Llama-3-8B.Q4_K_M.gguf')
+          # HuggingFace folder on USB:
+          model = ModelAdapter('local', '/Volumes/USB/Mistral-7B-Instruct-v0.2')
+          # Auto-detect: scan a directory for any model
+          model = ModelAdapter('local', '/Volumes/USB/models')
+        """
+        import os
+
+        path = self.model_name  # model_name IS the path for local type
+
+        # ── Auto-detect: if path is a directory, find the first usable model ──
+        if os.path.isdir(path):
+            path = self._find_model_in_dir(path)
+            logger.info(f"Auto-detected model: {path}")
+
+        if not os.path.exists(path):
+            raise FileNotFoundError(
+                f"Model path not found: {path}\n"
+                f"Check that the USB drive is mounted and the path is correct.\n"
+                f"Mac:     /Volumes/USB_NAME/models/your_model.gguf\n"
+                f"Windows: E:\\models\\your_model.gguf\n"
+                f"Linux:   /media/username/USB_NAME/models/your_model.gguf"
+            )
+
+        self._local_path = path
+        ext = os.path.splitext(path)[1].lower()
+
+        # ── GGUF format — use llama-cpp-python ─────────────────────────────
+        if ext == '.gguf' or self.model_type == 'gguf':
+            return self._load_gguf(path)
+
+        # ── HuggingFace folder format ──────────────────────────────────────
+        if os.path.isdir(path) and os.path.exists(os.path.join(path, 'config.json')):
+            return self._load_hf_local(path)
+
+        raise ValueError(
+            f"Unrecognised local model format at: {path}\n"
+            f"Supported: .gguf files, or folders containing config.json"
+        )
+
+    def _find_model_in_dir(self, directory: str) -> str:
+        """
+        Scan a directory and return the path to the first usable model found.
+        Priority: GGUF files > HuggingFace folders > subfolders with config.json
+        """
+        import os
+
+        # Look for GGUF files first (most common on USB)
+        for f in sorted(os.listdir(directory)):
+            if f.lower().endswith('.gguf'):
+                return os.path.join(directory, f)
+
+        # Look for HuggingFace model folder (has config.json)
+        if os.path.exists(os.path.join(directory, 'config.json')):
+            return directory
+
+        # Look one level deep for model subfolders
+        for d in sorted(os.listdir(directory)):
+            sub = os.path.join(directory, d)
+            if os.path.isdir(sub):
+                if os.path.exists(os.path.join(sub, 'config.json')):
+                    return sub
+                for f in os.listdir(sub):
+                    if f.lower().endswith('.gguf'):
+                        return os.path.join(sub, f)
+
+        raise FileNotFoundError(
+            f"No supported model found in {directory}\n"
+            f"Expected: .gguf file or folder with config.json"
+        )
+
+    def _load_gguf(self, path: str):
+        """Load a GGUF model using llama-cpp-python."""
+        try:
+            from llama_cpp import Llama
+        except ImportError:
+            raise EnvironmentError(
+                "llama-cpp-python is required for GGUF models.\n"
+                "Install: pip install llama-cpp-python\n"
+                "With GPU (CUDA): CMAKE_ARGS='-DLLAMA_CUDA=on' pip install llama-cpp-python --force-reinstall\n"
+                "With GPU (Metal/Mac): CMAKE_ARGS='-DLLAMA_METAL=on' pip install llama-cpp-python --force-reinstall"
+            )
+        import os
+        size_gb = os.path.getsize(path) / 1e9
+        logger.info(f"Loading GGUF: {os.path.basename(path)} ({size_gb:.1f}GB)")
+
+        # Detect quantisation from filename for logging
+        fname = os.path.basename(path).upper()
+        quant = next((q for q in ['Q2_K','Q3_K','Q4_K_M','Q4_K_S','Q5_K','Q6_K','Q8_0','F16']
+                      if q in fname), 'unknown')
+
+        # n_gpu_layers=-1 uses all GPU layers if GPU available, 0 for CPU only
+        n_gpu = -1 if GPU_AVAILABLE else 0
+
+        self.model = Llama(
+            model_path  = path,
+            n_ctx       = 4096,       # context window
+            n_gpu_layers= n_gpu,      # -1 = max GPU offload
+            verbose     = False,
+        )
+        self._gguf_path = path
+        self._gguf_quant = quant
+        logger.info(f"GGUF loaded: {quant} quantisation, GPU layers: {'all' if n_gpu == -1 else 'none'}")
+        return True
+
+    def _load_hf_local(self, path: str):
+        """Load a HuggingFace model from a local folder (no internet needed)."""
+        if not TRANSFORMERS_AVAILABLE:
+            raise EnvironmentError("pip install transformers")
+        if not TORCH_AVAILABLE:
+            raise EnvironmentError("pip install torch")
+
+        from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM
+        import torch
+        import os
+
+        size_gb = sum(
+            os.path.getsize(os.path.join(root, f))
+            for root, _, files in os.walk(path)
+            for f in files
+        ) / 1e9
+        logger.info(f"Loading local HF model: {os.path.basename(path)} ({size_gb:.1f}GB)")
+
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            path,
+            local_files_only=True,   # never call home — USB mode
+            trust_remote_code=True,
+        )
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        load_kw = {"local_files_only": True, "trust_remote_code": True}
+        if GPU_AVAILABLE and BITSANDBYTES_AVAILABLE and size_gb > 4:
+            from transformers import BitsAndBytesConfig
+            load_kw["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
+            load_kw["device_map"] = "auto"
+        elif GPU_AVAILABLE:
+            load_kw["device_map"] = "auto"
+        else:
+            load_kw["torch_dtype"] = torch.float32
+
+        try:
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(path, **load_kw)
+        except Exception:
+            self.model = AutoModelForCausalLM.from_pretrained(path, **load_kw)
+
+        return True
+
+    def _query_local(self, prompt: str, max_tokens: int) -> str:
+        """Query a locally loaded model (GGUF or HF local folder)."""
+        if hasattr(self, '_gguf_path'):
+            return self._query_gguf(prompt, max_tokens)
+        return self._query_hf_local(prompt, max_tokens)
+
+    def _query_gguf(self, prompt: str, max_tokens: int) -> str:
+        """Query a GGUF model via llama-cpp-python."""
+        output = self.model(
+            prompt,
+            max_tokens  = max_tokens,
+            temperature = 0.1,
+            stop        = ["\n\n", "User:", "Human:"],
+            echo        = False,
+        )
+        return output["choices"][0]["text"].strip()
+
+    def _query_hf_local(self, prompt: str, max_tokens: int) -> str:
+        """Query a locally loaded HuggingFace model."""
+        import torch
+        inputs  = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
+        device  = next(self.model.parameters()).device
+        inputs  = {k: v.to(device) for k, v in inputs.items()}
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens = max_tokens,
+                do_sample      = False,
+                temperature    = 1.0,
+                pad_token_id   = self.tokenizer.pad_token_id,
+            )
+        decoded = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Strip the prompt echo if present
+        if decoded.startswith(prompt):
+            decoded = decoded[len(prompt):].strip()
+        return decoded
+
+    def scan_local_models(self, directory: str) -> list:
+        """
+        Scan a directory (USB or local folder) and return all discoverable models.
+        Returns a list of dicts with path, name, format, and estimated size.
+
+        Usage:
+          adapter = ModelAdapter('local', '/Volumes/USB')
+          models = adapter.scan_local_models('/Volumes/USB')
+          for m in models:
+              print(m['name'], m['format'], m['size_gb'])
+        """
+        import os
+        found = []
+
+        for root, dirs, files in os.walk(directory):
+            # GGUF files
+            for f in files:
+                if f.lower().endswith('.gguf'):
+                    full_path = os.path.join(root, f)
+                    size_gb   = os.path.getsize(full_path) / 1e9
+                    # Parse quantisation from filename
+                    fname_up  = f.upper()
+                    quant     = next((q for q in ['Q2_K','Q3_K','Q4_K_M','Q4_K_S','Q5_K','Q6_K','Q8_0','F16']
+                                      if q in fname_up), None)
+                    found.append({
+                        "name":    f.replace('.gguf','').replace('.GGUF',''),
+                        "path":    full_path,
+                        "format":  "GGUF",
+                        "size_gb": round(size_gb, 1),
+                        "quant":   quant,
+                        "usable":  True,
+                    })
+
+            # HuggingFace model folders (have config.json)
+            if 'config.json' in files:
+                size_gb = sum(
+                    os.path.getsize(os.path.join(root, f))
+                    for f in files
+                ) / 1e9
+                found.append({
+                    "name":    os.path.basename(root),
+                    "path":    root,
+                    "format":  "HuggingFace",
+                    "size_gb": round(size_gb, 1),
+                    "quant":   None,
+                    "usable":  True,
+                })
+
+        return sorted(found, key=lambda x: x['name'])
+
