@@ -473,6 +473,9 @@ class ModelAdapter:
 
         path = self.model_name  # model_name IS the path for local type
 
+        # ── Clean up path — Windows Explorer sometimes adds quotes ───────────
+        path = path.strip().strip('"').strip("'")
+
         # ── Auto-detect: if path is a directory, find the first usable model ──
         if os.path.isdir(path):
             path = self._find_model_in_dir(path)
@@ -481,10 +484,10 @@ class ModelAdapter:
         if not os.path.exists(path):
             raise FileNotFoundError(
                 f"Model path not found: {path}\n"
-                f"Check that the USB drive is mounted and the path is correct.\n"
-                f"Mac:     /Volumes/USB_NAME/models/your_model.gguf\n"
-                f"Windows: E:\\models\\your_model.gguf\n"
-                f"Linux:   /media/username/USB_NAME/models/your_model.gguf"
+                f"Check that:\n"
+                f"  1. The USB drive is still connected\n"
+                f"  2. The path is correct (tip: right-click the file → Copy as path)\n"
+                f"  3. On Windows, remove any surrounding quotes if present"
             )
 
         self._local_path = path
