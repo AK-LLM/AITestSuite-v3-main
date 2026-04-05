@@ -1,9 +1,3 @@
-# ═══════════════════════════════════════════════════════════
-# AITestSuite v3 — System packages for Streamlit Cloud
-# (apt-get installs — required before pip installs)
-# ═══════════════════════════════════════════════════════════
-
-# Required to compile llama-cpp-python from source on Streamlit Cloud
 cmake
 build-essential
 libopenblas-dev

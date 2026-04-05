@@ -1,94 +1,45 @@
-# ═══════════════════════════════════════════════════════════
-# AITestSuite v3 — Complete Dependencies
-# Author: Amarjit Khakh
-#
-# THREE ENVIRONMENTS SUPPORTED:
-#
-# 1. STREAMLIT CLOUD (UI demo only)
-#    pip install -r requirements.txt
-#    Supports: flan-t5-small, API providers
-#    Does NOT support: flan-t5-xl, Mistral-7B (no GPU)
-#
-# 2. GOOGLE COLAB FREE T4 (recommended for audits)
-#    pip install -r requirements.txt
-#    pip install bitsandbytes accelerate  # for 7B+ models
-#    Supports: all models up to Mistral-7B
-#
-# 3. LOCAL MACHINE (full capability)
-#    pip install -r requirements.txt
-#    pip install -r requirements-local.txt
-#    See MIGRATION_GUIDE.md for full setup
-# ═══════════════════════════════════════════════════════════
+# AITestSuite v3.3 - Streamlit Cloud / Colab / Local
+# All packages here are safe for Streamlit Cloud.
+# Heavy local-only packages are in requirements-local.txt
 
-# ── Core UI ──────────────────────────────────────────────────────────────
+# Core UI
 streamlit>=1.32.0
 
-# ── HuggingFace Model Support ─────────────────────────────────────────────
-torch>=2.0.0
-transformers>=4.36.0
-datasets>=2.14.0
-
-# ── PDF Report Generation ─────────────────────────────────────────────────
+# PDF reports
 reportlab>=4.0.0
 
-# ── Data and Utilities ────────────────────────────────────────────────────
+# Data
 pandas>=2.0.0
 numpy>=1.24.0
 requests>=2.31.0
-scipy>=1.11.0
 
-# ── Semantic Evaluation ───────────────────────────────────────────────────
-sentence-transformers>=2.2.0
-
-# ── API Model Providers ───────────────────────────────────────────────────
-openai>=1.0.0
-anthropic>=0.20.0
-boto3>=1.26.0
-
-# ── REST API ──────────────────────────────────────────────────────────────
-fastapi>=0.104.0
-uvicorn>=0.24.0
-pydantic>=2.0.0
-
-# ── ML Metrics (bias testing, drift detection) ────────────────────────────
+# ML metrics (bias, scoring)
 scikit-learn>=1.3.0
 
-# ── Security Testing ──────────────────────────────────────────────────────
+# API model providers
+openai>=1.0.0
+anthropic>=0.20.0
+
+# Schema validation
+pydantic>=2.0.0
+
+# Security
 cryptography>=41.0.0
 
-# ── Testing Framework ─────────────────────────────────────────────────────
+# Testing
 pytest>=7.4.0
 
-# ── OPTIONAL: Large Model Quantization (Colab/Local GPU only) ─────────────
-# Install separately for Mistral-7B, Llama-2, Gemma-7B etc:
-# pip install bitsandbytes accelerate
+# HuggingFace (lazy-loaded, only used when model is actually loaded)
+transformers>=4.36.0
 
-# ── OPTIONAL: Multimodal Testing (Local only) ─────────────────────────────
-# Install separately for PDF/image/audio attack tests:
-# pip install Pillow pymupdf
-
-# ── OPTIONAL: Advanced NLP (Local only) ───────────────────────────────────
-# Install separately for clinical NLP tests:
-# pip install nltk spacy
-
-# ── OPTIONAL: GCP Vertex AI ───────────────────────────────────────────────
-# pip install google-cloud-aiplatform
-
-# ── OPTIONAL: Ollama Local ────────────────────────────────────────────────
-# No pip install needed — install Ollama from ollama.ai
-
-# ── NOT INCLUDED (causes Streamlit Cloud crashes) ─────────────────────────
-# selenium>=4.15.0        — requires Chrome, not on Streamlit Cloud
-# webdriver-manager       — same issue
-# Install locally only: pip install selenium webdriver-manager
-
-# ── GGUF / Local Model Support (USB drives, local folders) ────────────────
-# llama-cpp-python loads .gguf model files (Llama, Mistral, Phi, Gemma etc.)
-# CPU-only build — works on Streamlit Cloud and Windows/Mac/Linux without GPU
-# For GPU acceleration install locally with CMAKE_ARGS (see requirements-local.txt)
-llama-cpp-python>=0.2.0
-
-# ── Garak LLM Vulnerability Scanner (optional but recommended) ──────────────
-# pip install garak  — adds 100+ additional probe categories
-# See core/garak_bridge.py for integration details
-# garak>=0.9.0
+# NOTE: The following are intentionally NOT in this file:
+# torch            - 2GB+, install separately when needed
+# llama-cpp-python - compiles C++, install separately for local GGUF
+# sentence-transformers - pulls torch
+# scipy            - large, optional
+# bitsandbytes     - GPU only
+# accelerate       - GPU only
+# selenium         - requires Chrome binary
+# boto3            - AWS only
+# fastapi/uvicorn  - REST API only
+# datasets         - HuggingFace training data only
