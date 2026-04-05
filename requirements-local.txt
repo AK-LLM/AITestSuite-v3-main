@@ -12,6 +12,19 @@
 bitsandbytes>=0.41.0
 accelerate>=0.24.0
 
+# ── GGUF Local Model Support with GPU Acceleration ────────────────────────
+# CPU-only is already in requirements.txt (llama-cpp-python>=0.2.0)
+# For GPU acceleration, reinstall with the appropriate CMAKE_ARGS:
+#
+# NVIDIA CUDA:
+#   CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+#
+# Apple Silicon (Metal):
+#   CMAKE_ARGS="-DLLAMA_METAL=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+#
+# AMD ROCm:
+#   CMAKE_ARGS="-DLLAMA_HIPBLAS=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+
 # ── Multimodal Attack Testing ─────────────────────────────────────────────
 Pillow>=10.0.0
 pymupdf>=1.23.0
