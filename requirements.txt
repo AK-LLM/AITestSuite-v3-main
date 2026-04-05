@@ -82,6 +82,12 @@ pytest>=7.4.0
 # webdriver-manager       — same issue
 # Install locally only: pip install selenium webdriver-manager
 
+# ── GGUF / Local Model Support (USB drives, local folders) ────────────────
+# llama-cpp-python loads .gguf model files (Llama, Mistral, Phi, Gemma etc.)
+# CPU-only build — works on Streamlit Cloud and Windows/Mac/Linux without GPU
+# For GPU acceleration install locally with CMAKE_ARGS (see requirements-local.txt)
+llama-cpp-python>=0.2.0
+
 # ── Garak LLM Vulnerability Scanner (optional but recommended) ──────────────
 # pip install garak  — adds 100+ additional probe categories
 # See core/garak_bridge.py for integration details
