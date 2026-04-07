@@ -1,48 +1,51 @@
-# ═══════════════════════════════════════════════════════════
-# AITestSuite v3 — Local Machine Full Install
-# Author: Amarjit Khakh
-#
-# For full local deployment with all features.
+# AITestSuite v3.3 - Local Machine Full Install
 # Run AFTER requirements.txt:
 #   pip install -r requirements.txt
 #   pip install -r requirements-local.txt
-# ═══════════════════════════════════════════════════════════
 
-# ── Large Model Quantization ──────────────────────────────────────────────
+# PyTorch (required for HuggingFace models like flan-t5, Mistral-7B)
+torch>=2.0.0
+
+# Large model quantisation (required for 7B+ models in 4-bit)
 bitsandbytes>=0.41.0
 accelerate>=0.24.0
 
-# ── GGUF Local Model Support with GPU Acceleration ────────────────────────
-# CPU-only is already in requirements.txt (llama-cpp-python>=0.2.0)
-# For GPU acceleration, reinstall with the appropriate CMAKE_ARGS:
-#
-# NVIDIA CUDA:
+# GGUF local models - USB drive, flash drive, local folder
+# CPU only (works on any machine):
+#   pip install llama-cpp-python
+# NVIDIA GPU:
 #   CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
-#
 # Apple Silicon (Metal):
 #   CMAKE_ARGS="-DLLAMA_METAL=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
-#
-# AMD ROCm:
-#   CMAKE_ARGS="-DLLAMA_HIPBLAS=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+llama-cpp-python>=0.2.0
 
-# ── Multimodal Attack Testing ─────────────────────────────────────────────
+# Semantic evaluation (pulls torch)
+sentence-transformers>=2.2.0
+
+# Scientific computing
+scipy>=1.11.0
+
+# Multimodal testing
 Pillow>=10.0.0
 pymupdf>=1.23.0
 
-# ── Advanced Clinical NLP ─────────────────────────────────────────────────
-nltk>=3.8.0
-spacy>=3.6.0
-
-# ── Browser Automation (Black Box Testing) ────────────────────────────────
+# Browser automation (Black Box tab)
 selenium>=4.15.0
 webdriver-manager>=4.0.0
 
-# ── GCP Vertex AI ─────────────────────────────────────────────────────────
-google-cloud-aiplatform>=1.36.0
+# AWS Bedrock
+boto3>=1.26.0
 
-# ── Advanced Security Testing ─────────────────────────────────────────────
-paramiko>=3.3.0
+# REST API server
+fastapi>=0.104.0
+uvicorn>=0.24.0
 
-# ── Audio Processing (Voice/Deepfake Tests) ───────────────────────────────
-librosa>=0.10.0
-soundfile>=0.12.0
+# GCP Vertex AI
+# google-cloud-aiplatform>=1.36.0
+
+# Clinical NLP
+# nltk>=3.8.0
+# spacy>=3.6.0
+
+# HuggingFace datasets (for benchmark integration)
+datasets>=2.14.0

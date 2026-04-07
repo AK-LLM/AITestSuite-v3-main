@@ -449,58 +449,83 @@ with st.sidebar:
         "azure_openai": "gpt-4",
         "gcp_vertex":   "gemini-1.0-pro",
         "ollama":       "llama2",
-        "local":        "/path/to/your/model.gguf",
     }
-    model_name = st.text_input(
-        "Model Name / ID",
-        value=model_defaults.get(model_type, "google/flan-t5-small"),
-        help="HuggingFace: model ID | Cloud: model/deployment name | Local/USB: full path to .gguf file or model folder"
-    )
+    if model_type == "local":
+        # model_name is set by the scan UI below — no text box here
+        model_name = st.session_state.get("_local_model_path", "")
+    else:
+        model_name = st.text_input(
+            "Model Name / ID",
+            value=model_defaults.get(model_type, "google/flan-t5-small"),
+            help="HuggingFace: model ID | Cloud: model/deployment name"
+        )
 
     api_key = None
     # Cloud provider specific credential fields
     if model_type == "huggingface":
         pass  # No key needed
     elif model_type == "local":
-        st.caption("💾 **Local / USB Model**")
-        st.caption("Accepts GGUF files (.gguf) or HuggingFace model folders.")
-        st.caption("Enter the full path above, e.g.:")
-        with st.expander("📍 Path examples by OS"):
-            st.code("# Mac:\n/Volumes/USB_NAME/models/Llama-3-8B.Q4_K_M.gguf\n\n# Windows:\nE:\\models\\Llama-3-8B.Q4_K_M.gguf\n\n# Linux:\n/media/username/USB_NAME/models/Llama-3-8B.Q4_K_M.gguf\n\n# Local folder (HuggingFace):\n/home/user/models/Mistral-7B-Instruct-v0.2", language="")
-        # USB scanner
-        scan_dir = st.text_input(
-            "📂 Scan directory for models",
-            placeholder="/Volumes/USB or E:\\models",
-            help="Optional: enter a folder path and click Scan to auto-discover all models"
-        )
-        if st.button("🔍 Scan for Models", use_container_width=True):
-            if scan_dir and os.path.isdir(scan_dir):
-                try:
-                    from models.model_adapter import ModelAdapter as _MA
-                    _tmp = _MA.__new__(_MA)
-                    found = _tmp.scan_local_models(scan_dir)
-                    if found:
-                        st.success(f"Found {len(found)} model(s):")
-                        for m in found:
-                            quant_str = f" [{m['quant']}]" if m.get('quant') else ""
-                            st.code(f"{m['name']}{quant_str}  ({m['size_gb']}GB)\n{m['path']}", language="")
-                    else:
-                        st.warning("No GGUF or HuggingFace models found in that directory.")
-                except Exception as e:
-                    st.error(f"Scan error: {e}")
+        # ── Step 1: type a drive letter or path, then Scan ────────
+        _last = st.session_state.get("_scan_drive", "E:\\")
+        col_drv, col_btn = st.columns([3, 1])
+        with col_drv:
+            scan_drive = st.text_input(
+                "Drive or folder to scan",
+                value=_last,
+                placeholder="E:\\  or  F:\\  or  /Volumes/USB",
+                label_visibility="collapsed",
+            )
+        with col_btn:
+            do_scan = st.button("Scan", use_container_width=True)
+
+        if do_scan:
+            st.session_state["_scan_drive"] = scan_drive
+            _d = scan_drive.strip()
+            # Accept bare drive letter like "E" or "E:" → expand to "E:\"
+            if len(_d) == 1 and _d.isalpha():
+                _d = _d.upper() + ":\\"
+            elif len(_d) == 2 and _d[1] == ":" and _d[0].isalpha():
+                _d = _d.upper() + "\\"
+            if not os.path.exists(_d):
+                st.error(f"Cannot find: {_d}  —  check the drive letter and that the drive is connected.")
             else:
-                st.warning("Enter a valid directory path to scan.")
-        if model_name and model_name != "/path/to/your/model.gguf":
-            if not os.path.exists(model_name):
-                st.warning(f"⚠️ Path not found: {model_name}")
-            else:
-                ext = os.path.splitext(model_name)[1].lower()
-                fmt = "GGUF" if ext == ".gguf" else "HuggingFace folder" if os.path.isdir(model_name) else "unknown"
-                size_gb = os.path.getsize(model_name) / 1e9 if os.path.isfile(model_name) else sum(
-                    os.path.getsize(os.path.join(r,f))
-                    for r,_,fs in os.walk(model_name) for f in fs
-                ) / 1e9 if os.path.isdir(model_name) else 0
-                st.success(f"✅ Found: {fmt}, {size_gb:.1f}GB")
+                _hits = []
+                for _root, _, _files in os.walk(_d):
+                    for _f in _files:
+                        if _f.lower().endswith(".gguf"):
+                            _hits.append(os.path.join(_root, _f))
+                st.session_state["_gguf_hits"] = sorted(_hits)
+                if not _hits:
+                    st.warning(f"No .gguf files found on {_d}")
+
+        # ── Step 2: pick from results ──────────────────────────────
+        _hits = st.session_state.get("_gguf_hits", [])
+        if _hits:
+            _chosen = st.selectbox(
+                "Models found",
+                options=_hits,
+                format_func=lambda p: (
+                    f"{os.path.basename(p)}  "
+                    f"({os.path.getsize(p)/1e9:.1f} GB)"
+                    if os.path.isfile(p) else os.path.basename(p)
+                ),
+                label_visibility="collapsed",
+            )
+            if st.button("Use this model", use_container_width=True):
+                st.session_state["_local_model_path"] = _chosen
+                st.session_state["_gguf_hits"] = []
+                st.rerun()
+
+        # ── Step 3: show current selection ────────────────────────
+        _sel = st.session_state.get("_local_model_path", "")
+        if _sel and os.path.isfile(_sel):
+            _gb = os.path.getsize(_sel) / 1e9
+            st.success(f"Ready: {os.path.basename(_sel)}  ({_gb:.1f} GB)")
+        elif _sel:
+            st.error(f"File not found: {_sel}  —  is the drive still connected?")
+            st.session_state["_local_model_path"] = ""
+        else:
+            st.caption("Type a drive letter above and click Scan.")
     elif model_type == "azure_openai":
         api_key = st.text_input("Azure API Key", type="password")
         azure_endpoint = st.text_input("Azure Endpoint URL",
@@ -3327,6 +3352,17 @@ with tab_about:
 if run_button:
     with tab_dashboard:
         st.markdown('<p class="section-header">⚡ Audit In Progress</p>', unsafe_allow_html=True)
+
+        # Guard: block launch if local model path is missing or invalid
+        if model_type == "local":
+            _clean = model_name.strip().strip('"').strip("'")
+            if not _clean:
+                st.error("No model path set. Paste the path to your .gguf file in the sidebar, then click Launch Audit.")
+                st.stop()
+            elif not os.path.exists(_clean):
+                st.error(f"Path not found: {_clean}\n\nCheck the drive is connected and the path is correct.")
+                st.stop()
+            model_name = _clean  # use the clean version
 
         progress_bar = st.progress(0)
         status_text  = st.empty()
