@@ -465,67 +465,106 @@ with st.sidebar:
     if model_type == "huggingface":
         pass  # No key needed
     elif model_type == "local":
-        # ── Step 1: type a drive letter or path, then Scan ────────
-        _last = st.session_state.get("_scan_drive", "E:\\")
-        col_drv, col_btn = st.columns([3, 1])
-        with col_drv:
-            scan_drive = st.text_input(
-                "Drive or folder to scan",
-                value=_last,
-                placeholder="E:\\  or  F:\\  or  /Volumes/USB",
-                label_visibility="collapsed",
-            )
-        with col_btn:
-            do_scan = st.button("Scan", use_container_width=True)
+        import platform
 
-        if do_scan:
-            st.session_state["_scan_drive"] = scan_drive
-            _d = scan_drive.strip()
-            # Accept bare drive letter like "E" or "E:" → expand to "E:\"
-            if len(_d) == 1 and _d.isalpha():
-                _d = _d.upper() + ":\\"
-            elif len(_d) == 2 and _d[1] == ":" and _d[0].isalpha():
-                _d = _d.upper() + "\\"
-            if not os.path.exists(_d):
-                st.error(f"Cannot find: {_d}  —  check the drive letter and that the drive is connected.")
+        _is_windows = platform.system() == "Windows"
+        _is_mac     = platform.system() == "Darwin"
+        _is_linux   = platform.system() == "Linux"
+
+        # ── Check if we are on Streamlit Cloud (Linux but not the user's machine) ──
+        _on_cloud = _is_linux and not os.path.isdir("/media") and not os.path.isdir("/home/user")
+
+        if _on_cloud:
+            st.warning(
+                "**Running on Streamlit Cloud (Linux server)**\n\n"
+                "Windows drive letters like F:\\ do not exist on this server. "
+                "To test local GGUF models from a USB or flash drive:\n\n"
+                "1. Install Streamlit on your own Windows machine\n"
+                "2. Run: `streamlit run streamlit_app.py`\n"
+                "3. Open http://localhost:8501 in your browser\n"
+                "4. Select Local / USB Drive and scan your flash drive normally\n\n"
+                "On Streamlit Cloud, use **OpenAI**, **Anthropic**, or **Ollama** instead."
+            )
+        else:
+            # ── Running locally — full USB scan available ──────────────
+            if _is_windows:
+                import string
+                _detected = [f"{L}:\\" for L in string.ascii_uppercase if os.path.exists(f"{L}:\\")]
+                _hint = "  ·  ".join(_detected) if _detected else "No drives found"
+                st.caption(f"Drives detected on this machine: **{_hint}**")
+            elif _is_mac:
+                st.caption("Mac: volumes are under /Volumes/  e.g. /Volumes/MyUSB")
             else:
-                _hits = []
-                for _root, _, _files in os.walk(_d):
-                    for _f in _files:
-                        if _f.lower().endswith(".gguf"):
-                            _hits.append(os.path.join(_root, _f))
-                st.session_state["_gguf_hits"] = sorted(_hits)
-                if not _hits:
-                    st.warning(f"No .gguf files found on {_d}")
+                st.caption("Linux: mounted drives are under /media/ or /mnt/")
 
-        # ── Step 2: pick from results ──────────────────────────────
-        _hits = st.session_state.get("_gguf_hits", [])
-        if _hits:
-            _chosen = st.selectbox(
-                "Models found",
-                options=_hits,
-                format_func=lambda p: (
-                    f"{os.path.basename(p)}  "
-                    f"({os.path.getsize(p)/1e9:.1f} GB)"
-                    if os.path.isfile(p) else os.path.basename(p)
-                ),
-                label_visibility="collapsed",
-            )
-            if st.button("Use this model", use_container_width=True):
-                st.session_state["_local_model_path"] = _chosen
-                st.session_state["_gguf_hits"] = []
-                st.rerun()
+            _last = st.session_state.get("_scan_drive", "")
+            col_drv, col_btn = st.columns([3, 1])
+            with col_drv:
+                scan_drive = st.text_input(
+                    "Drive or folder",
+                    value=_last,
+                    placeholder="F:\\  or  G:\\  or  /Volumes/MyUSB",
+                    label_visibility="collapsed",
+                )
+            with col_btn:
+                do_scan = st.button("Scan", use_container_width=True)
 
-        # ── Step 3: show current selection ────────────────────────
+            if do_scan:
+                st.session_state["_scan_drive"] = scan_drive
+                _d = scan_drive.strip().strip('"').strip("'")
+                # Normalise bare drive letters: "F" -> "F:\"  "F:" -> "F:\"
+                if len(_d) == 1 and _d.isalpha():
+                    _d = _d.upper() + ":\\"
+                elif len(_d) == 2 and _d[1] == ":" and _d[0].isalpha():
+                    _d = _d.upper() + "\\"
+                if not _d:
+                    st.error("Type a drive letter or path first.")
+                elif not os.path.exists(_d):
+                    st.error(
+                        f"Cannot find: **{_d}**\n\n"
+                        f"Check that the flash drive is plugged in and the letter is correct. "
+                        f"Drives on this machine: "
+                        + (", ".join([f"{L}:\\" for L in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                      if os.path.exists(f"{L}:\\")])
+                           if _is_windows else "check /Volumes/ or /media/")
+                    )
+                else:
+                    with st.spinner(f"Scanning {_d} ..."):
+                        _hits = []
+                        for _root, _, _files in os.walk(_d):
+                            for _f in _files:
+                                if _f.lower().endswith(".gguf"):
+                                    _hits.append(os.path.join(_root, _f))
+                    st.session_state["_gguf_hits"] = sorted(_hits)
+                    if _hits:
+                        st.success(f"Found {len(_hits)} model(s)")
+                    else:
+                        st.warning(f"No .gguf files found on {_d}")
+
+            _hits = st.session_state.get("_gguf_hits", [])
+            if _hits:
+                _chosen = st.selectbox(
+                    "Select model",
+                    options=_hits,
+                    format_func=lambda p: (
+                        f"{os.path.basename(p)}  ({os.path.getsize(p)/1e9:.1f} GB)"
+                        if os.path.isfile(p) else os.path.basename(p)
+                    ),
+                    label_visibility="collapsed",
+                )
+                if st.button("Use this model", use_container_width=True):
+                    st.session_state["_local_model_path"] = _chosen
+                    st.session_state["_gguf_hits"] = []
+                    st.rerun()
+
         _sel = st.session_state.get("_local_model_path", "")
         if _sel and os.path.isfile(_sel):
             _gb = os.path.getsize(_sel) / 1e9
             st.success(f"Ready: {os.path.basename(_sel)}  ({_gb:.1f} GB)")
         elif _sel:
-            st.error(f"File not found: {_sel}  —  is the drive still connected?")
+            st.error("File not found — is the drive still connected?")
             st.session_state["_local_model_path"] = ""
-        else:
-            st.caption("Type a drive letter above and click Scan.")
+
     elif model_type == "azure_openai":
         api_key = st.text_input("Azure API Key", type="password")
         azure_endpoint = st.text_input("Azure Endpoint URL",
